@@ -1,5 +1,10 @@
 # TreeRAG
 
+[![CI](https://github.com/shrijacked/TreeRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/shrijacked/TreeRAG/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/shrijacked/TreeRAG)](https://github.com/shrijacked/TreeRAG/releases)
+[![Python](https://img.shields.io/badge/python-3.9%2B-3776AB.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-2ea44f.svg)](https://github.com/shrijacked/TreeRAG/blob/main/LICENSE)
+
 TreeRAG is an embedding-free hierarchical retrieval system for runbook-style knowledge bases. It packages recursive tree building, cache-aware indexing, sibling-context retrieval, multi-document corpus routing, and a typed CLI/API into a production-ready Python project.
 
 ## What "Embedding-Free" Means Here
@@ -45,6 +50,45 @@ flowchart LR
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e .[dev]
+export OPENAI_API_KEY=your_api_key_here
+```
+
+## Quick Start
+
+Build an index and ask one question:
+
+```bash
+treerag index examples/jira_runbook.md build/jira.index.json \
+  --cache-dir .cache/treerag
+
+treerag ask build/jira.index.json "How do Sev-1 escalations work?" \
+  --sibling-window 1
+```
+
+Example response:
+
+```json
+{
+  "answer": "Page the primary on-call immediately and escalate after five minutes.",
+  "selected_leaf_title": "Escalation Policy",
+  "navigation_path": [
+    "root",
+    "Incident Management",
+    "Escalation Policy"
+  ]
+}
+```
+
+Build a routed corpus across multiple runbooks:
+
+```bash
+treerag corpus-index build/runbooks \
+  examples/jira_runbook.md \
+  examples/oncall_handbook.md \
+  --cache-dir .cache/treerag
+
+treerag corpus-ask build/runbooks "Who coordinates responders during a Sev-1?" \
+  --sibling-window 1
 ```
 
 ## CLI Usage
