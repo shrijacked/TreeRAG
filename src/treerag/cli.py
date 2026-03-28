@@ -10,6 +10,7 @@ from typing import Sequence
 from treerag.api import build_index, query_index
 from treerag.benchmark import run_benchmark
 from treerag.config import IndexConfig, ModelConfig, RetrievalConfig
+from treerag.corpus import build_corpus, load_corpus, query_corpus
 from treerag.provider import LLMProvider
 from treerag.storage import load_index
 
@@ -38,6 +39,42 @@ def build_parser() -> argparse.ArgumentParser:
 
     inspect_parser = subparsers.add_parser("inspect", help="Print index metadata.")
     inspect_parser.add_argument("index_path")
+
+    corpus_index_parser = subparsers.add_parser(
+        "corpus-index",
+        help="Build a multi-document corpus manifest and per-document indexes.",
+    )
+    corpus_index_parser.add_argument("output_path")
+    corpus_index_parser.add_argument("input_paths", nargs="+")
+    corpus_index_parser.add_argument("--subsection-threshold", type=int, default=300)
+    corpus_index_parser.add_argument("--max-depth", type=int, default=4)
+    corpus_index_parser.add_argument("--cache-dir", default=".cache/treerag")
+    corpus_index_parser.add_argument("--disable-cache", action="store_true")
+    corpus_index_parser.add_argument(
+        "--segmentation-model",
+        default=ModelConfig().segmentation_model,
+    )
+    corpus_index_parser.add_argument(
+        "--summarization-model",
+        default=ModelConfig().summarization_model,
+    )
+
+    corpus_ask_parser = subparsers.add_parser(
+        "corpus-ask",
+        help="Answer a question by routing through a corpus manifest.",
+    )
+    corpus_ask_parser.add_argument("corpus_path")
+    corpus_ask_parser.add_argument("question")
+    corpus_ask_parser.add_argument("--sibling-window", type=int, default=1)
+    corpus_ask_parser.add_argument("--exclude-ancestors", action="store_true")
+    corpus_ask_parser.add_argument("--routing-model", default=ModelConfig().routing_model)
+    corpus_ask_parser.add_argument("--answer-model", default=ModelConfig().answer_model)
+
+    corpus_inspect_parser = subparsers.add_parser(
+        "corpus-inspect",
+        help="Print corpus manifest metadata.",
+    )
+    corpus_inspect_parser.add_argument("corpus_path")
 
     benchmark_parser = subparsers.add_parser(
         "benchmark",
@@ -139,6 +176,83 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
                     "created_at": document_index.created_at,
                     "root_title": document_index.root.title,
                     "child_count": len(document_index.root.children),
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.command == "corpus-index":
+        index_config = IndexConfig(
+            subsection_word_threshold=args.subsection_threshold,
+            max_depth=args.max_depth,
+            cache_dir=Path(args.cache_dir),
+            use_cache=not args.disable_cache,
+        )
+        model_config = ModelConfig(
+            segmentation_model=args.segmentation_model,
+            summarization_model=args.summarization_model,
+        )
+        corpus_index = build_corpus(
+            args.input_paths,
+            args.output_path,
+            index_config,
+            model_config=model_config,
+            provider=provider,
+        )
+        print(
+            json.dumps(
+                {
+                    "corpus_path": str(Path(args.output_path) / "corpus.json")
+                    if Path(args.output_path).suffix != ".json"
+                    else args.output_path,
+                    "document_count": len(corpus_index.documents),
+                    "document_titles": [document.title for document in corpus_index.documents],
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.command == "corpus-ask":
+        retrieval_config = RetrievalConfig(
+            sibling_window=args.sibling_window,
+            include_ancestor_summaries=not args.exclude_ancestors,
+        )
+        model_config = ModelConfig(
+            routing_model=args.routing_model,
+            answer_model=args.answer_model,
+        )
+        corpus_result = query_corpus(
+            args.question,
+            args.corpus_path,
+            retrieval_config,
+            model_config=model_config,
+            provider=provider,
+        )
+        print(
+            json.dumps(
+                {
+                    "document_id": corpus_result.document_id,
+                    "document_title": corpus_result.document_title,
+                    "selected_leaf_title": corpus_result.selected_leaf_title,
+                    "navigation_path": corpus_result.navigation_path,
+                    "included_sections": corpus_result.included_sections,
+                    "answer": corpus_result.answer,
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.command == "corpus-inspect":
+        corpus_index = load_corpus(Path(args.corpus_path))
+        print(
+            json.dumps(
+                {
+                    "created_at": corpus_index.created_at,
+                    "document_count": len(corpus_index.documents),
+                    "document_titles": [document.title for document in corpus_index.documents],
                 },
                 indent=2,
             )

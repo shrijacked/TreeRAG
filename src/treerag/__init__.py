@@ -3,6 +3,14 @@
 from treerag.api import build_index, query_index
 from treerag.benchmark import BenchmarkCase, BenchmarkCaseResult, BenchmarkReport, run_benchmark
 from treerag.config import IndexConfig, ModelConfig, RetrievalConfig
+from treerag.corpus import (
+    CorpusDocument,
+    CorpusIndex,
+    CorpusQueryResult,
+    build_corpus,
+    load_corpus,
+    query_corpus,
+)
 from treerag.models import DocumentIndex, PageNode, QueryResult
 
 __all__ = [
@@ -10,6 +18,9 @@ __all__ = [
     "BenchmarkCase",
     "BenchmarkCaseResult",
     "BenchmarkReport",
+    "CorpusDocument",
+    "CorpusIndex",
+    "CorpusQueryResult",
     "DocumentIndex",
     "IndexConfig",
     "ModelConfig",
@@ -17,7 +28,10 @@ __all__ = [
     "QueryResult",
     "RetrievalConfig",
     "build_index",
+    "build_corpus",
+    "load_corpus",
     "query_index",
+    "query_corpus",
     "run_benchmark",
 ]
 

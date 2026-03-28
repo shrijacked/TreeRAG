@@ -1,6 +1,6 @@
 # TreeRAG
 
-TreeRAG is an embedding-free hierarchical retrieval system for single-document and runbook-style knowledge bases. It packages recursive tree building, cache-aware indexing, sibling-context retrieval, and a typed CLI/API into a production-ready Python project.
+TreeRAG is an embedding-free hierarchical retrieval system for runbook-style knowledge bases. It packages recursive tree building, cache-aware indexing, sibling-context retrieval, multi-document corpus routing, and a typed CLI/API into a production-ready Python project.
 
 ## What "Embedding-Free" Means Here
 
@@ -29,11 +29,13 @@ flowchart LR
 ## Features
 
 - Typed public API: `build_index(...)` and `query_index(...)`
-- CLI commands: `treerag index`, `treerag ask`, `treerag inspect`
+- Typed corpus API: `build_corpus(...)`, `load_corpus(...)`, and `query_corpus(...)`
+- CLI commands: `treerag index`, `treerag ask`, `treerag inspect`, `treerag corpus-index`, `treerag corpus-ask`, `treerag corpus-inspect`
 - Recursive parsing beyond depth two
 - File-backed caches for segmentation and summaries
 - Explicit routing errors instead of silent branch fallback
 - Context assembly that can include nearby sibling leaves and ancestor summaries
+- Corpus manifests that route questions across multiple indexed documents before leaf selection
 - UTF-8 JSON index storage with metadata and parent-link restoration
 - Jira-style runbook example in [`examples/jira_runbook.md`](/Users/owlxshri/Desktop/TreeRAG/examples/jira_runbook.md)
 
@@ -66,6 +68,28 @@ Inspect metadata:
 
 ```bash
 treerag inspect build/jira.index.json
+```
+
+Build a routed corpus from multiple documents:
+
+```bash
+treerag corpus-index build/runbooks \
+  examples/jira_runbook.md \
+  examples/jira_runbook.md \
+  --cache-dir .cache/treerag
+```
+
+Ask the corpus a question:
+
+```bash
+treerag corpus-ask build/runbooks "Who owns Sev-1 response?" \
+  --sibling-window 1
+```
+
+Inspect the corpus manifest:
+
+```bash
+treerag corpus-inspect build/runbooks
 ```
 
 Run a benchmark suite:
@@ -113,16 +137,16 @@ print(result.context)
 
 ## Good Fits
 
-Yes, when the document is structured and the answer usually lives in one operational subsection. The Jira runbook example is a good fit because:
+Yes, when the document set is structured and the answer usually lives in one operational subsection. The Jira runbook example is a good fit because:
 
 - headings naturally map to sections
 - neighboring subsections provide useful context
-- the document is small enough that hierarchical routing is cheaper than loading everything every time
+- the runbooks are small enough that hierarchical routing is cheaper than loading everything every time
 
 It is a worse fit for:
 
 - tiny documents where full-context prompting is simpler
-- very large multi-document corpora without additional indexing layers
+- very large multi-document corpora without a stronger corpus-selection layer
 - workloads where deterministic keyword or structured search already solves the task
 
 ## Verification
@@ -143,3 +167,17 @@ TreeRAG includes a lightweight benchmark harness for repeatable, question-based 
 - Case files live in JSON and define expected leaf titles and answer substrings
 - `treerag benchmark` measures index build time, total query time, and per-case results
 - [`benchmarks/jira_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/jira_cases.json) gives the repo a concrete Jira-style benchmark target
+
+## Corpus Layout
+
+`treerag corpus-index` writes a small manifest plus one index per document:
+
+```text
+build/runbooks/
+├── corpus.json
+└── documents/
+    ├── jira-runbook.index.json
+    └── oncall-handbook.index.json
+```
+
+At query time, TreeRAG first routes into the right document summary, then performs normal tree navigation inside that document.
