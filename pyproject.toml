@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "treerag"
+version = "0.1.0"
+description = "Embedding-free hierarchical retrieval with configurable tree routing and context assembly."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+  {name = "TreeRAG contributors"},
+]
+dependencies = [
+  "openai>=2.30.0,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.19.1,<2",
+  "pytest>=8.4.2,<9",
+  "ruff>=0.15.8,<0.16",
+]
+
+[project.scripts]
+treerag = "treerag.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+warn_unused_configs = true
+mypy_path = "src"
+packages = ["treerag"]
