@@ -118,6 +118,27 @@ def test_load_benchmark_cases_keeps_expected_document_title(tmp_path: Path) -> N
     assert cases[0].expected_document_title == "Incident Response"
 
 
+def test_packaged_benchmark_fixtures_load_from_repo() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+
+    jira_cases = load_benchmark_cases(repo_root / "benchmarks" / "jira_cases.json")
+    access_cases = load_benchmark_cases(repo_root / "benchmarks" / "access_cases.json")
+    corpus_cases = load_benchmark_cases(
+        repo_root / "benchmarks" / "operations_corpus_cases.json"
+    )
+
+    assert [case.name for case in jira_cases] == ["sev1_escalation", "sev1_notifications"]
+    assert [case.name for case in access_cases] == [
+        "emergency_access",
+        "access_revocation",
+    ]
+    assert [case.expected_document_title for case in corpus_cases] == [
+        "Jira Incident Runbook",
+        "On-Call Handbook",
+        "Access Management Runbook",
+    ]
+
+
 def test_run_benchmark_reports_pass_and_failure_counts(tmp_path: Path) -> None:
     document_path = _write_document(tmp_path)
     cases_path = _write_cases(tmp_path)

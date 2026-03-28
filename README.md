@@ -85,6 +85,7 @@ Build a routed corpus across multiple runbooks:
 treerag corpus-index build/runbooks \
   examples/jira_runbook.md \
   examples/oncall_handbook.md \
+  examples/access_management_runbook.md \
   --cache-dir .cache/treerag
 
 treerag corpus-ask build/runbooks "Who coordinates responders during a Sev-1?" \
@@ -149,9 +150,10 @@ Run a corpus benchmark suite:
 
 ```bash
 treerag corpus-benchmark build/runbooks \
-  benchmarks/runbook_corpus_cases.json \
+  benchmarks/operations_corpus_cases.json \
   examples/jira_runbook.md \
   examples/oncall_handbook.md \
+  examples/access_management_runbook.md \
   --cache-dir .cache/treerag
 ```
 
@@ -222,7 +224,9 @@ TreeRAG includes a lightweight benchmark harness for repeatable, question-based 
 - Case files live in JSON and define expected leaf titles and answer substrings
 - `treerag benchmark` measures index build time, total query time, and per-case results
 - [`benchmarks/jira_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/jira_cases.json) gives the repo a concrete Jira-style benchmark target
+- [`benchmarks/access_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/access_cases.json) covers access-control runbooks with approval and revocation flows
 - [`benchmarks/runbook_corpus_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/runbook_corpus_cases.json) exercises corpus routing across multiple runbooks
+- [`benchmarks/operations_corpus_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/operations_corpus_cases.json) expands corpus evals across incident, on-call, and access runbooks
 
 ## Corpus Layout
 

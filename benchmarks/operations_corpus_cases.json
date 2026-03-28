@@ -1,0 +1,25 @@
+{
+  "cases": [
+    {
+      "name": "sev1_escalation",
+      "question": "How do Sev-1 escalations work?",
+      "expected_document_title": "Jira Incident Runbook",
+      "expected_leaf_title": "Escalation Policy",
+      "expected_answer_substring": "primary on-call"
+    },
+    {
+      "name": "incident_command",
+      "question": "Who coordinates responders during a Sev-1?",
+      "expected_document_title": "On-Call Handbook",
+      "expected_leaf_title": "Incident Command",
+      "expected_answer_substring": "incident commander"
+    },
+    {
+      "name": "emergency_access",
+      "question": "When can emergency production access be granted?",
+      "expected_document_title": "Access Management Runbook",
+      "expected_leaf_title": "Emergency Access",
+      "expected_answer_substring": "Sev-1 incidents"
+    }
+  ]
+}
