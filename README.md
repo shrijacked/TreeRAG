@@ -1,18 +1,6 @@
 # TreeRAG
 
-TreeRAG is an embedding-free hierarchical retrieval system for single-document and runbook-style knowledge bases. It rebuilds the public `pageindex-rag` prototype as a typed Python package and CLI with reproducible tests, explicit failure modes, sibling-context retrieval, and cache-aware indexing.
-
-## Why This Exists
-
-The reference prototype had a strong idea and a fragile implementation:
-
-- one unpinned dependency and no lockfile
-- no tests or CI
-- silent fallback to the first child on routing errors
-- leaf-only retrieval with no sibling context
-- no cache, no metadata, and no operational guardrails
-
-TreeRAG keeps the core retrieval strategy and fixes those issues in a fresh codebase.
+TreeRAG is an embedding-free hierarchical retrieval system for single-document and runbook-style knowledge bases. It packages recursive tree building, cache-aware indexing, sibling-context retrieval, and a typed CLI/API into a production-ready Python project.
 
 ## What "Embedding-Free" Means Here
 
@@ -115,16 +103,7 @@ print(result.answer)
 print(result.context)
 ```
 
-## What Changed From The Prototype
-
-- Retrieval now includes nearby sibling context instead of only the selected leaf.
-- Invalid routing choices raise explicit errors instead of defaulting to child `0`.
-- Recursive parsing can build deeper trees when the document warrants it.
-- Index builds are cache-aware, so unchanged content does not force repeated LLM work.
-- Storage includes metadata like source hash and build timestamp.
-- Tests, lint, type checks, and compile checks gate the implementation.
-
-## Jira Docs: Does This Make Sense?
+## Good Fits
 
 Yes, when the document is structured and the answer usually lives in one operational subsection. The Jira runbook example is a good fit because:
 
@@ -138,13 +117,6 @@ It is a worse fit for:
 - very large multi-document corpora without additional indexing layers
 - workloads where deterministic keyword or structured search already solves the task
 
-## Comment Responses
-
-- Nearby sibling chunks: implemented through configurable `sibling_window`.
-- Jira docs: covered with a dedicated runbook example and integration test.
-- "No embeddings" concern: documented precisely as embedding-free retrieval, not LLM-free processing.
-- TypeScript request: intentionally deferred; this repo ships Python-first and leaves TS as a roadmap item.
-
 ## Verification
 
 Current local checks:
@@ -155,7 +127,3 @@ Current local checks:
 - `python -m compileall src tests`
 
 GitHub Actions now runs the same gate set on pushes to `main`, pull requests, and manual workflow runs.
-
-## Provenance
-
-This project was inspired by the public MIT-licensed repository `vixhal-baraiya/pageindex-rag`. The upstream codebase is preserved locally only as a read-only reference under `.reference/pageindex-rag`. Attribution and license text are in [`THIRD_PARTY_NOTICES.md`](/Users/owlxshri/Desktop/TreeRAG/THIRD_PARTY_NOTICES.md).
