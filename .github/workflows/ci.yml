@@ -42,3 +42,9 @@ jobs:
 
       - name: Run compile check
         run: PYTHONPYCACHEPREFIX=.cache/pyc python -m compileall src tests
+
+      - name: Build distributions
+        run: python -m build --no-isolation
+
+      - name: Validate distribution metadata
+        run: python -m twine check dist/*

@@ -8,19 +8,36 @@ version = "0.1.0"
 description = "Embedding-free hierarchical retrieval with configurable tree routing and context assembly."
 readme = "README.md"
 requires-python = ">=3.9"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
   {name = "TreeRAG contributors"},
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Typing :: Typed",
 ]
 dependencies = [
   "openai>=2.30.0,<3",
 ]
 
+[project.urls]
+Homepage = "https://github.com/shrijacked/TreeRAG"
+Repository = "https://github.com/shrijacked/TreeRAG"
+Issues = "https://github.com/shrijacked/TreeRAG/issues"
+Releases = "https://github.com/shrijacked/TreeRAG/releases"
+
 [project.optional-dependencies]
 dev = [
+  "build>=1.3.0,<2",
   "mypy>=1.19.1,<2",
   "pytest>=8.4.2,<9",
   "ruff>=0.15.8,<0.16",
+  "twine>=6.2.0,<7",
 ]
 
 [project.scripts]
@@ -31,6 +48,9 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+treerag = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
