@@ -1,0 +1,16 @@
+{
+  "cases": [
+    {
+      "name": "sev1_escalation",
+      "question": "How do Sev-1 escalations work?",
+      "expected_leaf_title": "Escalation Policy",
+      "expected_answer_substring": "primary on-call"
+    },
+    {
+      "name": "sev1_notifications",
+      "question": "When should support leadership be notified?",
+      "expected_leaf_title": "Notification Rules",
+      "expected_answer_substring": "engineering acknowledges"
+    }
+  ]
+}

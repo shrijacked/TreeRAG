@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Sequence
 
 from treerag.api import build_index, query_index
+from treerag.benchmark import run_benchmark
 from treerag.config import IndexConfig, ModelConfig, RetrievalConfig
 from treerag.provider import LLMProvider
 from treerag.storage import load_index
@@ -37,6 +38,30 @@ def build_parser() -> argparse.ArgumentParser:
 
     inspect_parser = subparsers.add_parser("inspect", help="Print index metadata.")
     inspect_parser.add_argument("index_path")
+
+    benchmark_parser = subparsers.add_parser(
+        "benchmark",
+        help="Build an index and run benchmark cases against it.",
+    )
+    benchmark_parser.add_argument("input_path")
+    benchmark_parser.add_argument("cases_path")
+    benchmark_parser.add_argument(
+        "--index-path",
+        default=".cache/treerag/benchmark.index.json",
+    )
+    benchmark_parser.add_argument("--subsection-threshold", type=int, default=300)
+    benchmark_parser.add_argument("--max-depth", type=int, default=4)
+    benchmark_parser.add_argument("--cache-dir", default=".cache/treerag")
+    benchmark_parser.add_argument("--disable-cache", action="store_true")
+    benchmark_parser.add_argument("--sibling-window", type=int, default=1)
+    benchmark_parser.add_argument("--exclude-ancestors", action="store_true")
+    benchmark_parser.add_argument("--segmentation-model", default=ModelConfig().segmentation_model)
+    benchmark_parser.add_argument(
+        "--summarization-model",
+        default=ModelConfig().summarization_model,
+    )
+    benchmark_parser.add_argument("--routing-model", default=ModelConfig().routing_model)
+    benchmark_parser.add_argument("--answer-model", default=ModelConfig().answer_model)
 
     return parser
 
@@ -118,6 +143,35 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
                 indent=2,
             )
         )
+        return 0
+
+    if args.command == "benchmark":
+        index_config = IndexConfig(
+            subsection_word_threshold=args.subsection_threshold,
+            max_depth=args.max_depth,
+            cache_dir=Path(args.cache_dir),
+            use_cache=not args.disable_cache,
+        )
+        retrieval_config = RetrievalConfig(
+            sibling_window=args.sibling_window,
+            include_ancestor_summaries=not args.exclude_ancestors,
+        )
+        model_config = ModelConfig(
+            segmentation_model=args.segmentation_model,
+            summarization_model=args.summarization_model,
+            routing_model=args.routing_model,
+            answer_model=args.answer_model,
+        )
+        report = run_benchmark(
+            args.input_path,
+            args.cases_path,
+            args.index_path,
+            index_config,
+            retrieval_config,
+            model_config=model_config,
+            provider=provider,
+        )
+        print(json.dumps(report.to_dict(), indent=2))
         return 0
 
     parser.error(f"Unknown command: {args.command}")

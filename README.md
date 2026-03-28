@@ -68,6 +68,14 @@ Inspect metadata:
 treerag inspect build/jira.index.json
 ```
 
+Run a benchmark suite:
+
+```bash
+treerag benchmark examples/jira_runbook.md benchmarks/jira_cases.json \
+  --index-path .cache/treerag/jira-benchmark.index.json \
+  --cache-dir .cache/treerag
+```
+
 Model names are configurable from the CLI:
 
 ```bash
@@ -127,3 +135,11 @@ Current local checks:
 - `python -m compileall src tests`
 
 GitHub Actions now runs the same gate set on pushes to `main`, pull requests, and manual workflow runs.
+
+## Benchmarks
+
+TreeRAG includes a lightweight benchmark harness for repeatable, question-based evals.
+
+- Case files live in JSON and define expected leaf titles and answer substrings
+- `treerag benchmark` measures index build time, total query time, and per-case results
+- [`benchmarks/jira_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/jira_cases.json) gives the repo a concrete Jira-style benchmark target
