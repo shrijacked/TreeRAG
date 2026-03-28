@@ -1,0 +1,18 @@
+{
+  "cases": [
+    {
+      "name": "incident_escalation",
+      "question": "How do Sev-1 escalations work?",
+      "expected_document_title": "Jira Incident Runbook",
+      "expected_leaf_title": "Escalation Policy",
+      "expected_answer_substring": "primary on-call"
+    },
+    {
+      "name": "incident_command",
+      "question": "Who coordinates responders during a Sev-1?",
+      "expected_document_title": "On-Call Handbook",
+      "expected_leaf_title": "Incident Command",
+      "expected_answer_substring": "incident commander"
+    }
+  ]
+}
