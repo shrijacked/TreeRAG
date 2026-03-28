@@ -154,6 +154,8 @@ Current local checks:
 - `mypy src tests`
 - `python -m compileall src tests`
 
+GitHub Actions now runs the same gate set on pushes to `main`, pull requests, and manual workflow runs.
+
 ## Provenance
 
 This project was inspired by the public MIT-licensed repository `vixhal-baraiya/pageindex-rag`. The upstream codebase is preserved locally only as a read-only reference under `.reference/pageindex-rag`. Attribution and license text are in [`THIRD_PARTY_NOTICES.md`](/Users/owlxshri/Desktop/TreeRAG/THIRD_PARTY_NOTICES.md).
