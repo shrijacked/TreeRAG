@@ -36,7 +36,7 @@ flowchart LR
 - Typed public API: `build_index(...)` and `query_index(...)`
 - Typed corpus API: `build_corpus(...)`, `load_corpus(...)`, and `query_corpus(...)`
 - Benchmark APIs: `run_benchmark(...)` and `run_corpus_benchmark(...)`
-- CLI commands: `treerag index`, `treerag ask`, `treerag inspect`, `treerag corpus-index`, `treerag corpus-ask`, `treerag corpus-inspect`, `treerag benchmark`, `treerag corpus-benchmark`
+- CLI commands: `treerag index`, `treerag ask`, `treerag repl`, `treerag inspect`, `treerag corpus-index`, `treerag corpus-ask`, `treerag corpus-repl`, `treerag corpus-inspect`, `treerag benchmark`, `treerag corpus-benchmark`
 - Recursive parsing beyond depth two
 - File-backed caches for segmentation and summaries
 - Explicit routing errors instead of silent branch fallback
@@ -92,6 +92,13 @@ treerag corpus-ask build/runbooks "Who coordinates responders during a Sev-1?" \
   --sibling-window 1
 ```
 
+Stay in an interactive loop for follow-up questions:
+
+```bash
+treerag repl build/jira.index.json
+treerag corpus-repl build/runbooks
+```
+
 ## CLI Usage
 
 Build an index:
@@ -108,6 +115,12 @@ Ask a question:
 ```bash
 treerag ask build/jira.index.json "How do Sev-1 escalations work?" \
   --sibling-window 1
+```
+
+Keep the same index open for repeated questions:
+
+```bash
+treerag repl build/jira.index.json
 ```
 
 Inspect metadata:
@@ -130,6 +143,12 @@ Ask the corpus a question:
 ```bash
 treerag corpus-ask build/runbooks "Who owns Sev-1 response?" \
   --sibling-window 1
+```
+
+Keep the same corpus open for repeated questions:
+
+```bash
+treerag corpus-repl build/runbooks
 ```
 
 Inspect the corpus manifest:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Callable, Sequence
 
 from treerag.api import build_index, query_index
 from treerag.benchmark import run_benchmark, run_corpus_benchmark
@@ -36,6 +36,16 @@ def build_parser() -> argparse.ArgumentParser:
     ask_parser.add_argument("--exclude-ancestors", action="store_true")
     ask_parser.add_argument("--routing-model", default=ModelConfig().routing_model)
     ask_parser.add_argument("--answer-model", default=ModelConfig().answer_model)
+
+    repl_parser = subparsers.add_parser(
+        "repl",
+        help="Start an interactive question loop for a saved index.",
+    )
+    repl_parser.add_argument("index_path")
+    repl_parser.add_argument("--sibling-window", type=int, default=1)
+    repl_parser.add_argument("--exclude-ancestors", action="store_true")
+    repl_parser.add_argument("--routing-model", default=ModelConfig().routing_model)
+    repl_parser.add_argument("--answer-model", default=ModelConfig().answer_model)
 
     inspect_parser = subparsers.add_parser("inspect", help="Print index metadata.")
     inspect_parser.add_argument("index_path")
@@ -69,6 +79,16 @@ def build_parser() -> argparse.ArgumentParser:
     corpus_ask_parser.add_argument("--exclude-ancestors", action="store_true")
     corpus_ask_parser.add_argument("--routing-model", default=ModelConfig().routing_model)
     corpus_ask_parser.add_argument("--answer-model", default=ModelConfig().answer_model)
+
+    corpus_repl_parser = subparsers.add_parser(
+        "corpus-repl",
+        help="Start an interactive question loop for a saved corpus manifest.",
+    )
+    corpus_repl_parser.add_argument("corpus_path")
+    corpus_repl_parser.add_argument("--sibling-window", type=int, default=1)
+    corpus_repl_parser.add_argument("--exclude-ancestors", action="store_true")
+    corpus_repl_parser.add_argument("--routing-model", default=ModelConfig().routing_model)
+    corpus_repl_parser.add_argument("--answer-model", default=ModelConfig().answer_model)
 
     corpus_inspect_parser = subparsers.add_parser(
         "corpus-inspect",
@@ -162,14 +182,8 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
         return 0
 
     if args.command == "ask":
-        retrieval_config = RetrievalConfig(
-            sibling_window=args.sibling_window,
-            include_ancestor_summaries=not args.exclude_ancestors,
-        )
-        model_config = ModelConfig(
-            routing_model=args.routing_model,
-            answer_model=args.answer_model,
-        )
+        retrieval_config = _retrieval_config_from_args(args)
+        model_config = _query_model_config_from_args(args)
         result = query_index(
             args.question,
             args.index_path,
@@ -177,18 +191,23 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
             model_config=model_config,
             provider=provider,
         )
-        print(
-            json.dumps(
-                {
-                    "answer": result.answer,
-                    "selected_leaf_title": result.selected_leaf_title,
-                    "navigation_path": result.navigation_path,
-                    "included_sections": result.included_sections,
-                },
-                indent=2,
+        print(json.dumps(_index_query_output(result), indent=2))
+        return 0
+
+    if args.command == "repl":
+        retrieval_config = _retrieval_config_from_args(args)
+        model_config = _query_model_config_from_args(args)
+        return _interactive_query_loop(
+            lambda question: _index_query_output(
+                query_index(
+                    question,
+                    args.index_path,
+                    retrieval_config,
+                    model_config=model_config,
+                    provider=provider,
+                )
             )
         )
-        return 0
 
     if args.command == "inspect":
         document_index = load_index(Path(args.index_path))
@@ -239,14 +258,8 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
         return 0
 
     if args.command == "corpus-ask":
-        retrieval_config = RetrievalConfig(
-            sibling_window=args.sibling_window,
-            include_ancestor_summaries=not args.exclude_ancestors,
-        )
-        model_config = ModelConfig(
-            routing_model=args.routing_model,
-            answer_model=args.answer_model,
-        )
+        retrieval_config = _retrieval_config_from_args(args)
+        model_config = _query_model_config_from_args(args)
         corpus_result = query_corpus(
             args.question,
             args.corpus_path,
@@ -254,20 +267,23 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
             model_config=model_config,
             provider=provider,
         )
-        print(
-            json.dumps(
-                {
-                    "document_id": corpus_result.document_id,
-                    "document_title": corpus_result.document_title,
-                    "selected_leaf_title": corpus_result.selected_leaf_title,
-                    "navigation_path": corpus_result.navigation_path,
-                    "included_sections": corpus_result.included_sections,
-                    "answer": corpus_result.answer,
-                },
-                indent=2,
+        print(json.dumps(_corpus_query_output(corpus_result), indent=2))
+        return 0
+
+    if args.command == "corpus-repl":
+        retrieval_config = _retrieval_config_from_args(args)
+        model_config = _query_model_config_from_args(args)
+        return _interactive_query_loop(
+            lambda question: _corpus_query_output(
+                query_corpus(
+                    question,
+                    args.corpus_path,
+                    retrieval_config,
+                    model_config=model_config,
+                    provider=provider,
+                )
             )
         )
-        return 0
 
     if args.command == "corpus-inspect":
         corpus_index = load_corpus(Path(args.corpus_path))
@@ -343,3 +359,56 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
 
     parser.error(f"Unknown command: {args.command}")
     return 2
+
+
+def _retrieval_config_from_args(args: argparse.Namespace) -> RetrievalConfig:
+    return RetrievalConfig(
+        sibling_window=args.sibling_window,
+        include_ancestor_summaries=not args.exclude_ancestors,
+    )
+
+
+def _query_model_config_from_args(args: argparse.Namespace) -> ModelConfig:
+    return ModelConfig(
+        routing_model=args.routing_model,
+        answer_model=args.answer_model,
+    )
+
+
+def _index_query_output(result: Any) -> dict[str, Any]:
+    return {
+        "answer": result.answer,
+        "selected_leaf_title": result.selected_leaf_title,
+        "navigation_path": result.navigation_path,
+        "included_sections": result.included_sections,
+    }
+
+
+def _corpus_query_output(result: Any) -> dict[str, Any]:
+    return {
+        "document_id": result.document_id,
+        "document_title": result.document_title,
+        "selected_leaf_title": result.selected_leaf_title,
+        "navigation_path": result.navigation_path,
+        "included_sections": result.included_sections,
+        "answer": result.answer,
+    }
+
+
+def _interactive_query_loop(render_query: Callable[[str], dict[str, Any]]) -> int:
+    while True:
+        try:
+            question = input("treerag> ").strip()
+        except EOFError:
+            print()
+            return 0
+        except KeyboardInterrupt:
+            print()
+            return 0
+
+        if not question:
+            continue
+        if question.lower() in {"exit", "quit"}:
+            return 0
+
+        print(json.dumps(render_query(question), indent=2))

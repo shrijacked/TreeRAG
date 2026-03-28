@@ -9,6 +9,7 @@ from tests.support.fake_provider import FakeProvider
 from treerag.api import build_index, query_index
 from treerag.cli import main
 from treerag.config import IndexConfig, ModelConfig, RetrievalConfig
+from treerag.corpus import build_corpus
 from treerag.models import Section
 from treerag.storage import MissingIndexError
 
@@ -23,6 +24,20 @@ def _write_document(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return document_path
+
+
+def _write_corpus_documents(tmp_path: Path) -> tuple[Path, Path]:
+    access_path = tmp_path / "access_requests.md"
+    access_path.write_text(
+        "# Access Requests\n\nGrant access with manager approval.",
+        encoding="utf-8",
+    )
+    incidents_path = tmp_path / "incident_response.md"
+    incidents_path.write_text(
+        "# Incident Response\n\nPage the incident commander immediately.",
+        encoding="utf-8",
+    )
+    return access_path, incidents_path
 
 
 def test_build_and_query_index_supports_jira_style_runbook(tmp_path: Path) -> None:
@@ -139,3 +154,89 @@ def test_cli_index_ask_and_inspect_commands(
     assert main(["inspect", str(index_path)]) == 0
     inspect_output = json.loads(capsys.readouterr().out)
     assert inspect_output["child_count"] == 1
+
+
+def test_cli_repl_answers_until_quit(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document_path = _write_document(tmp_path)
+    index_path = tmp_path / "jira.index.json"
+    provider = FakeProvider(
+        segment_responses=[
+            [Section(title="Incident Management", content=" ".join(["policy"] * 301))],
+            [
+                Section(title="Severity Levels", content="Status page update."),
+                Section(title="Escalation Policy", content="Page the primary on-call."),
+            ],
+        ],
+        summary_responses=[
+            "Status updates happen quickly.",
+            "Escalation policy pages the primary on-call.",
+            "Incident management covers the operational runbook.",
+            "The runbook explains incident response.",
+        ],
+        route_responses=[0, 1],
+        answer_responses=["Page the primary on-call."],
+    )
+
+    build_index(
+        document_path,
+        index_path,
+        IndexConfig(cache_dir=tmp_path / ".cache"),
+        model_config=ModelConfig(),
+        provider=provider,
+    )
+
+    questions = iter(["Who gets paged first?", "quit"])
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(questions))
+
+    assert main(["repl", str(index_path), "--sibling-window", "1"], provider=provider) == 0
+    output = capsys.readouterr().out
+    assert "Escalation Policy" in output
+    assert "Page the primary on-call." in output
+
+
+def test_cli_corpus_repl_answers_until_exit(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    access_path, incidents_path = _write_corpus_documents(tmp_path)
+    corpus_dir = tmp_path / "corpus"
+    provider = FakeProvider(
+        segment_responses=[
+            [Section(title="Access Requests", content="Grant access with manager approval.")],
+            [
+                Section(
+                    title="Incident Response",
+                    content="Page the incident commander immediately.",
+                )
+            ],
+        ],
+        summary_responses=[
+            "Grant access with manager approval.",
+            "This document explains access request handling.",
+            "Page the incident commander immediately.",
+            "This document explains incident escalation.",
+        ],
+        route_responses=[1, 0],
+        answer_responses=["Page the incident commander immediately."],
+    )
+
+    build_corpus(
+        [access_path, incidents_path],
+        corpus_dir,
+        IndexConfig(cache_dir=tmp_path / ".cache"),
+        model_config=ModelConfig(),
+        provider=provider,
+    )
+
+    questions = iter(["How do incidents escalate?", "exit"])
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(questions))
+
+    assert main(["corpus-repl", str(corpus_dir)], provider=provider) == 0
+    output = capsys.readouterr().out
+    assert "Incident Response" in output
+    assert "Page the incident commander immediately." in output
