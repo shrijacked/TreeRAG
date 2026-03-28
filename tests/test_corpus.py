@@ -114,6 +114,70 @@ def test_load_corpus_accepts_directory_or_manifest_path(tmp_path: Path) -> None:
     assert loaded_from_file.documents[0].source_path.endswith("access_requests.md")
 
 
+def test_build_corpus_prefers_document_heading_for_document_title(tmp_path: Path) -> None:
+    jira_path = tmp_path / "jira_runbook.md"
+    jira_path.write_text(
+        (
+            "# Jira Incident Runbook\n\n"
+            "## Severity Levels\n\n"
+            "Update the status page within five minutes.\n\n"
+            "## Escalation Policy\n\n"
+            "Page the primary on-call immediately."
+        ),
+        encoding="utf-8",
+    )
+    handbook_path = tmp_path / "oncall_handbook.md"
+    handbook_path.write_text(
+        (
+            "# On-Call Handbook\n\n"
+            "## Incident Command\n\n"
+            "The incident commander coordinates responders."
+        ),
+        encoding="utf-8",
+    )
+    corpus_dir = tmp_path / "corpus"
+    provider = FakeProvider(
+        segment_responses=[
+            [
+                Section(
+                    title="Severity Levels",
+                    content="Update the status page within five minutes.",
+                ),
+                Section(
+                    title="Escalation Policy",
+                    content="Page the primary on-call immediately.",
+                ),
+            ],
+            [
+                Section(
+                    title="Incident Command",
+                    content="The incident commander coordinates responders.",
+                )
+            ],
+        ],
+        summary_responses=[
+            "Status page updates happen within five minutes.",
+            "Page the primary on-call immediately.",
+            "The runbook explains how to respond to incidents.",
+            "The incident commander coordinates responders.",
+            "The handbook explains on-call ownership.",
+        ],
+    )
+
+    corpus = build_corpus(
+        [jira_path, handbook_path],
+        corpus_dir,
+        IndexConfig(cache_dir=tmp_path / ".cache"),
+        model_config=ModelConfig(),
+        provider=provider,
+    )
+
+    assert [document.title for document in corpus.documents] == [
+        "Jira Incident Runbook",
+        "On-Call Handbook",
+    ]
+
+
 def test_query_corpus_raises_for_missing_manifest(tmp_path: Path) -> None:
     with pytest.raises(ParseError):
         query_corpus(

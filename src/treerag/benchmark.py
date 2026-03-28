@@ -10,6 +10,7 @@ from typing import Any
 
 from treerag.api import build_index, query_index
 from treerag.config import IndexConfig, ModelConfig, RetrievalConfig
+from treerag.corpus import build_corpus, query_corpus
 from treerag.errors import ParseError
 from treerag.provider import LLMProvider
 
@@ -20,6 +21,7 @@ class BenchmarkCase:
 
     name: str
     question: str
+    expected_document_title: str | None = None
     expected_leaf_title: str | None = None
     expected_answer_substring: str | None = None
 
@@ -30,23 +32,27 @@ class BenchmarkCaseResult:
 
     name: str
     question: str
+    document_title: str | None
     selected_leaf_title: str
     answer: str
     query_duration_ms: float
+    document_match: bool
     leaf_match: bool
     answer_match: bool
 
     @property
     def passed(self) -> bool:
-        return self.leaf_match and self.answer_match
+        return self.document_match and self.leaf_match and self.answer_match
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "question": self.question,
+            "document_title": self.document_title,
             "selected_leaf_title": self.selected_leaf_title,
             "answer": self.answer,
             "query_duration_ms": round(self.query_duration_ms, 3),
+            "document_match": self.document_match,
             "leaf_match": self.leaf_match,
             "answer_match": self.answer_match,
             "passed": self.passed,
@@ -114,12 +120,19 @@ def load_benchmark_cases(path: str | Path) -> list[BenchmarkCase]:
             raise ParseError(f"Benchmark case #{index + 1} must be a JSON object.")
         name = raw_case.get("name")
         question = raw_case.get("question")
+        expected_document_title = raw_case.get("expected_document_title")
         expected_leaf_title = raw_case.get("expected_leaf_title")
         expected_answer_substring = raw_case.get("expected_answer_substring")
         if not isinstance(name, str) or not name.strip():
             raise ParseError(f"Benchmark case #{index + 1} is missing a non-empty name.")
         if not isinstance(question, str) or not question.strip():
             raise ParseError(f"Benchmark case #{index + 1} is missing a non-empty question.")
+        if expected_document_title is not None and not isinstance(
+            expected_document_title, str
+        ):
+            raise ParseError(
+                f"Benchmark case #{index + 1} has a non-string expected_document_title."
+            )
         if expected_leaf_title is not None and not isinstance(expected_leaf_title, str):
             raise ParseError(
                 f"Benchmark case #{index + 1} has a non-string expected_leaf_title."
@@ -134,6 +147,7 @@ def load_benchmark_cases(path: str | Path) -> list[BenchmarkCase]:
             BenchmarkCase(
                 name=name.strip(),
                 question=question.strip(),
+                expected_document_title=expected_document_title,
                 expected_leaf_title=expected_leaf_title,
                 expected_answer_substring=expected_answer_substring,
             )
@@ -190,9 +204,11 @@ def run_benchmark(
             BenchmarkCaseResult(
                 name=case.name,
                 question=case.question,
+                document_title=None,
                 selected_leaf_title=result.selected_leaf_title,
                 answer=result.answer,
                 query_duration_ms=query_duration_ms,
+                document_match=True,
                 leaf_match=leaf_match,
                 answer_match=answer_match,
             )
@@ -207,3 +223,83 @@ def run_benchmark(
         total_duration_ms=total_duration_ms,
         case_results=case_results,
     )
+
+
+def run_corpus_benchmark(
+    input_paths: list[str | Path],
+    cases_path: str | Path,
+    corpus_path: str | Path,
+    index_config: IndexConfig,
+    retrieval_config: RetrievalConfig,
+    *,
+    model_config: ModelConfig | None = None,
+    provider: LLMProvider | None = None,
+) -> BenchmarkReport:
+    """Run an end-to-end benchmark against a multi-document corpus."""
+
+    start_time = perf_counter()
+    cases = load_benchmark_cases(cases_path)
+
+    build_start = perf_counter()
+    build_corpus(
+        input_paths,
+        corpus_path,
+        index_config,
+        model_config=model_config,
+        provider=provider,
+    )
+    build_duration_ms = (perf_counter() - build_start) * 1000
+
+    case_results: list[BenchmarkCaseResult] = []
+    total_query_duration_ms = 0.0
+    for case in cases:
+        query_start = perf_counter()
+        result = query_corpus(
+            case.question,
+            corpus_path,
+            retrieval_config,
+            model_config=model_config,
+            provider=provider,
+        )
+        query_duration_ms = (perf_counter() - query_start) * 1000
+        total_query_duration_ms += query_duration_ms
+
+        document_match = case.expected_document_title is None or (
+            result.document_title == case.expected_document_title
+        )
+        leaf_match = case.expected_leaf_title is None or (
+            result.selected_leaf_title == case.expected_leaf_title
+        )
+        answer_match = case.expected_answer_substring is None or (
+            case.expected_answer_substring.lower() in result.answer.lower()
+        )
+        case_results.append(
+            BenchmarkCaseResult(
+                name=case.name,
+                question=case.question,
+                document_title=result.document_title,
+                selected_leaf_title=result.selected_leaf_title,
+                answer=result.answer,
+                query_duration_ms=query_duration_ms,
+                document_match=document_match,
+                leaf_match=leaf_match,
+                answer_match=answer_match,
+            )
+        )
+
+    total_duration_ms = (perf_counter() - start_time) * 1000
+    return BenchmarkReport(
+        source_path=str(corpus_path),
+        index_path=str(_resolve_benchmark_target_path(corpus_path)),
+        build_duration_ms=build_duration_ms,
+        total_query_duration_ms=total_query_duration_ms,
+        total_duration_ms=total_duration_ms,
+        case_results=case_results,
+    )
+
+
+def _resolve_benchmark_target_path(path: str | Path) -> Path:
+    candidate = Path(path)
+    if candidate.suffix == ".json":
+        return candidate
+    return candidate / "corpus.json"

@@ -77,6 +77,7 @@ def build_corpus(
     documents: list[CorpusDocument] = []
     for input_path in input_paths:
         source_path = Path(input_path)
+        source_text = source_path.read_text(encoding="utf-8")
         document_id = _allocate_document_id(source_path, used_ids)
         index_path = indexes_dir / f"{document_id}.index.json"
         document_index = build_index(
@@ -89,7 +90,7 @@ def build_corpus(
         documents.append(
             CorpusDocument(
                 document_id=document_id,
-                title=_document_title(document_index.root, source_path),
+                title=_document_title(document_index.root, source_text, source_path),
                 summary=document_index.root.summary,
                 source_path=str(source_path.resolve()),
                 source_hash=document_index.source_hash,
@@ -257,7 +258,10 @@ def _select_document(
     return corpus_index.documents[selected_index]
 
 
-def _document_title(root: Any, source_path: Path) -> str:
+def _document_title(root: Any, source_text: str, source_path: Path) -> str:
+    markdown_title = _markdown_title(source_text)
+    if markdown_title is not None:
+        return markdown_title
     if getattr(root, "children", None):
         first_child = root.children[0]
         if isinstance(first_child.title, str) and first_child.title.strip():
@@ -293,6 +297,18 @@ def _humanize_stem(value: str) -> str:
     if not words:
         return "Document"
     return " ".join(word.capitalize() for word in words)
+
+
+def _markdown_title(source_text: str) -> str | None:
+    for line in source_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("# "):
+            title = stripped[2:].strip()
+            if title:
+                return title
+        if stripped:
+            break
+    return None
 
 
 def _require_str(payload: Mapping[str, Any], key: str, context: str) -> str:

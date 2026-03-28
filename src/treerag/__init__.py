@@ -1,7 +1,13 @@
 """TreeRAG package."""
 
 from treerag.api import build_index, query_index
-from treerag.benchmark import BenchmarkCase, BenchmarkCaseResult, BenchmarkReport, run_benchmark
+from treerag.benchmark import (
+    BenchmarkCase,
+    BenchmarkCaseResult,
+    BenchmarkReport,
+    run_benchmark,
+    run_corpus_benchmark,
+)
 from treerag.config import IndexConfig, ModelConfig, RetrievalConfig
 from treerag.corpus import (
     CorpusDocument,
@@ -33,6 +39,7 @@ __all__ = [
     "query_index",
     "query_corpus",
     "run_benchmark",
+    "run_corpus_benchmark",
 ]
 
 __version__ = "0.1.0"
