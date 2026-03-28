@@ -5,10 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from treerag.models import DocumentIndex, PageNode
 from treerag.storage import (
-    DocumentIndex,
-    IndexMetadata,
-    IndexNode,
     MalformedIndexError,
     MissingIndexError,
     load,
@@ -17,44 +15,45 @@ from treerag.storage import (
 
 
 def build_sample_index() -> DocumentIndex:
-    root = IndexNode(
+    root = PageNode(
+        node_id="root",
         title="root",
+        content="",
         summary="document summary",
         depth=0,
     )
-    parent = IndexNode(
+    parent = PageNode(
+        node_id="root.0",
         title="Parent",
         content="parent content",
         summary="parent summary",
         depth=1,
-        parent=root,
     )
-    leaf_one = IndexNode(
+    leaf_one = PageNode(
+        node_id="root.0.0",
         title="Leaf One",
         content="leaf one content",
         summary="leaf one summary",
         depth=2,
-        parent=parent,
     )
-    leaf_two = IndexNode(
+    leaf_two = PageNode(
+        node_id="root.0.1",
         title="Leaf Two",
         content="leaf two content",
         summary="leaf two summary",
         depth=2,
-        parent=parent,
     )
-    parent.children.extend([leaf_one, leaf_two])
-    root.children.append(parent)
+    parent.set_children([leaf_one, leaf_two])
+    root.set_children([parent])
 
-    metadata = IndexMetadata(
+    return DocumentIndex(
+        root=root,
         source_path="/docs/source.md",
         created_at=datetime(2026, 3, 29, 12, 0, tzinfo=timezone.utc).isoformat(),
-        generator="TreeRAG",
-        version="0.1.0",
-        document_hash="abc123",
-        extra={"topic": "jira", "unicode": "café"},
+        source_hash="abc123",
+        model_config={"answer_model": "gpt-5.4"},
+        index_config={"topic": "jira", "unicode": "café"},
     )
-    return DocumentIndex(root=root, metadata=metadata)
 
 
 def test_storage_round_trip_preserves_tree_and_metadata(tmp_path: Path) -> None:
@@ -64,8 +63,11 @@ def test_storage_round_trip_preserves_tree_and_metadata(tmp_path: Path) -> None:
     save(original, index_path)
     restored = load(index_path)
 
-    assert restored.schema_version == original.schema_version
-    assert restored.metadata == original.metadata
+    assert restored.source_path == original.source_path
+    assert restored.source_hash == original.source_hash
+    assert restored.created_at == original.created_at
+    assert restored.model_config == original.model_config
+    assert restored.index_config == original.index_config
     assert restored.root.title == "root"
     assert restored.root.children[0].parent is restored.root
     assert restored.root.children[0].children[0].parent is restored.root.children[0]
@@ -85,22 +87,22 @@ def test_load_missing_index_raises_clear_error(tmp_path: Path) -> None:
     ("payload", "message"),
     [
         ("not json", "not valid JSON"),
-        ('{"schema_version": 1, "metadata": {}, "root": {}}', "missing a string 'source_path'"),
+        ('{"schema_version": 1, "root": {}}', "missing a string 'source_path'"),
         (
             (
-                '{"schema_version": 1, "metadata": {"source_path": "x", '
-                '"created_at": "y", "generator": "TreeRAG", "version": "0.1.0", '
-                '"document_hash": "", "extra": []}, "root": {"title": "root", '
-                '"content": "", "summary": "", "depth": 0, "children": []}}'
+                '{"schema_version": 1, "source_path": "x", "source_hash": "y", '
+                '"created_at": "z", "model_config": [], "index_config": {}, '
+                '"root": {"node_id": "root", "title": "root", "content": "", '
+                '"summary": "", "depth": 0, "children": []}}'
             ),
-            "metadata.extra must be a JSON object",
+            "missing an object 'model_config'",
         ),
         (
             (
-                '{"schema_version": 99, "metadata": {"source_path": "x", '
-                '"created_at": "y", "generator": "TreeRAG", "version": "0.1.0", '
-                '"document_hash": "", "extra": {}}, "root": {"title": "root", '
-                '"content": "", "summary": "", "depth": 0, "children": []}}'
+                '{"schema_version": 99, "source_path": "x", "source_hash": "y", '
+                '"created_at": "z", "model_config": {}, "index_config": {}, '
+                '"root": {"node_id": "root", "title": "root", "content": "", '
+                '"summary": "", "depth": 0, "children": []}}'
             ),
             "Unsupported index schema_version 99",
         ),

@@ -1,127 +1,99 @@
+"""Hierarchical retrieval and context assembly."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol, Sequence
+
+from treerag.config import ModelConfig, RetrievalConfig
+from treerag.errors import RoutingError
+from treerag.models import PageNode
+from treerag.provider import LLMProvider, RouteChoice
 
 
-class RetrievalError(Exception):
-    """Base error for retrieval failures."""
-
-
-class InvalidRouteChoiceError(RetrievalError):
-    """Raised when a router returns a choice that cannot be applied safely."""
+class InvalidRouteChoiceError(RoutingError):
+    """Raised when a provider returns a route choice that cannot be applied safely."""
 
     def __init__(self, choice: object, child_count: int, node_title: str) -> None:
-        message = (
-            f"Invalid route choice {choice!r} for node {node_title!r} with {child_count} children"
+        super().__init__(
+            f"Invalid route choice {choice!r} for node {node_title!r} with {child_count} children."
         )
-        super().__init__(message)
         self.choice = choice
         self.child_count = child_count
         self.node_title = node_title
 
 
-@dataclass
-class TreeNode:
-    title: str
-    content: str = ""
-    summary: str = ""
-    children: tuple["TreeNode", ...] = field(default_factory=tuple)
-    parent: "TreeNode | None" = field(default=None, repr=False, compare=False)
-
-    def __post_init__(self) -> None:
-        self.children = tuple(self.children)
-        for child in self.children:
-            child.parent = self
-
-    def is_leaf(self) -> bool:
-        return len(self.children) == 0
-
-
-@dataclass(frozen=True)
-class RetrievalConfig:
-    sibling_window: int = 1
-    include_ancestor_summaries: bool = True
-    ancestor_summary_depth: int = 1
-
-    def __post_init__(self) -> None:
-        if self.sibling_window < 0:
-            raise ValueError("sibling_window must be >= 0")
-        if self.ancestor_summary_depth < 0:
-            raise ValueError("ancestor_summary_depth must be >= 0")
-
-
 @dataclass(frozen=True)
 class RetrievalResult:
-    query: str
-    leaf: TreeNode
-    route_path: tuple[TreeNode, ...]
+    """Structured retrieval metadata returned by tree navigation."""
+
+    leaf: PageNode
+    route_path: tuple[PageNode, ...]
     context: str
-    ancestor_nodes: tuple[TreeNode, ...] = field(default_factory=tuple)
-    sibling_nodes: tuple[TreeNode, ...] = field(default_factory=tuple)
+    included_nodes: tuple[PageNode, ...] = field(default_factory=tuple)
 
 
-class RouteSelector(Protocol):
-    def choose_child_index(
-        self,
-        query: str,
-        node: TreeNode,
-        children: Sequence[TreeNode],
-    ) -> int:
-        """Return the 0-based child index to follow."""
+def retrieve(
+    question: str,
+    *,
+    root: PageNode,
+    provider: LLMProvider,
+    model_config: ModelConfig,
+    config: RetrievalConfig | None = None,
+) -> RetrievalResult:
+    active_config = config or RetrievalConfig()
+    node = root
+    route_path = [root]
+
+    while node.children:
+        choices = [RouteChoice(title=child.title, summary=child.summary) for child in node.children]
+        index = provider.route(
+            question,
+            node_title=node.title,
+            choices=choices,
+            model_config=model_config,
+        )
+        child_index = _validate_choice(index, len(node.children), node.title)
+        node = node.children[child_index]
+        route_path.append(node)
+
+    context, included_nodes = assemble_context(node, config=active_config)
+    return RetrievalResult(
+        leaf=node,
+        route_path=tuple(route_path),
+        context=context,
+        included_nodes=tuple(included_nodes),
+    )
 
 
-def _validate_child_choice(choice: object, child_count: int, node: TreeNode) -> int:
-    if isinstance(choice, bool) or not isinstance(choice, int):
-        raise InvalidRouteChoiceError(choice, child_count, node.title)
-    if choice < 0 or choice >= child_count:
-        raise InvalidRouteChoiceError(choice, child_count, node.title)
-    return choice
+def retrieve_leaf(
+    question: str,
+    *,
+    root: PageNode,
+    provider: LLMProvider,
+    model_config: ModelConfig,
+) -> PageNode:
+    return retrieve(
+        question,
+        root=root,
+        provider=provider,
+        model_config=model_config,
+        config=RetrievalConfig(),
+    ).leaf
 
 
-def _find_child_index(node: TreeNode, child: TreeNode) -> int:
-    for index, candidate in enumerate(node.children):
-        if candidate is child:
-            return index
-    raise RetrievalError(f"Selected node {child.title!r} is not a child of {node.title!r}")
-
-
-def _selected_ancestors(path: Sequence[TreeNode], config: RetrievalConfig) -> tuple[TreeNode, ...]:
-    if not config.include_ancestor_summaries or config.ancestor_summary_depth == 0:
-        return ()
-    ancestors = path[:-1]
-    if config.ancestor_summary_depth >= len(ancestors):
-        return tuple(ancestors)
-    return tuple(ancestors[-config.ancestor_summary_depth :])
-
-
-def _selected_siblings(path: Sequence[TreeNode], config: RetrievalConfig) -> tuple[TreeNode, ...]:
-    leaf = path[-1]
-    parent = leaf.parent
-    if parent is None:
-        return (leaf,)
-
-    index = _find_child_index(parent, leaf)
-    start = max(0, index - config.sibling_window)
-    stop = min(len(parent.children), index + config.sibling_window + 1)
-    return tuple(parent.children[start:stop])
-
-
-def _format_context(
-    path: Sequence[TreeNode],
-    config: RetrievalConfig,
-) -> tuple[str, tuple[TreeNode, ...], tuple[TreeNode, ...]]:
-    leaf = path[-1]
-    ancestor_nodes = _selected_ancestors(path, config)
-    sibling_nodes = _selected_siblings(path, config)
+def assemble_context(leaf: PageNode, *, config: RetrievalConfig) -> tuple[str, list[PageNode]]:
+    ancestor_nodes = _ancestor_nodes(leaf) if config.include_ancestor_summaries else []
+    sibling_nodes = _sibling_window(leaf, config.sibling_window)
 
     blocks: list[str] = []
+    included_nodes: list[PageNode] = []
 
     if ancestor_nodes:
         blocks.append("Ancestor summaries:")
-        for depth, ancestor in enumerate(ancestor_nodes, start=1):
+        for index, ancestor in enumerate(ancestor_nodes, start=1):
             summary = ancestor.summary.strip() or "(no summary available)"
-            blocks.append(f"{depth}. {ancestor.title}: {summary}")
+            blocks.append(f"{index}. {ancestor.title}: {summary}")
+            included_nodes.append(ancestor)
 
     blocks.append(f"Selected leaf: {leaf.title}")
     leaf_text = leaf.content.strip() or leaf.summary.strip() or "(empty leaf)"
@@ -133,32 +105,43 @@ def _format_context(
             label = "selected" if sibling is leaf else "neighbor"
             sibling_text = sibling.content.strip() or sibling.summary.strip() or "(empty section)"
             blocks.append(f"- {sibling.title} [{label}]: {sibling_text}")
+            if sibling not in included_nodes:
+                included_nodes.append(sibling)
 
-    return "\n".join(blocks), ancestor_nodes, sibling_nodes
+    return "\n".join(blocks), included_nodes
 
 
-def retrieve(
-    query: str,
-    root: TreeNode,
-    router: RouteSelector,
-    config: RetrievalConfig | None = None,
-) -> RetrievalResult:
-    active_config = config or RetrievalConfig()
-    node = root
-    route_path = [root]
+def _validate_choice(choice: object, child_count: int, node_title: str) -> int:
+    if isinstance(choice, bool) or not isinstance(choice, int):
+        raise InvalidRouteChoiceError(choice, child_count, node_title)
+    if choice < 0 or choice >= child_count:
+        raise InvalidRouteChoiceError(choice, child_count, node_title)
+    return choice
 
-    while node.children:
-        choice = router.choose_child_index(query, node, node.children)
-        index = _validate_child_choice(choice, len(node.children), node)
-        node = node.children[index]
-        route_path.append(node)
 
-    context, ancestor_nodes, sibling_nodes = _format_context(route_path, active_config)
-    return RetrievalResult(
-        query=query,
-        leaf=node,
-        route_path=tuple(route_path),
-        context=context,
-        ancestor_nodes=ancestor_nodes,
-        sibling_nodes=sibling_nodes,
-    )
+def _ancestor_nodes(node: PageNode) -> list[PageNode]:
+    ancestors: list[PageNode] = []
+    current = node.parent
+    while current is not None:
+        ancestors.append(current)
+        current = current.parent
+    ancestors.reverse()
+    return ancestors
+
+
+def _sibling_window(node: PageNode, window: int) -> list[PageNode]:
+    parent = node.parent
+    if parent is None:
+        return [node]
+
+    index = _find_child_index(parent, node)
+    start = max(0, index - window)
+    stop = min(len(parent.children), index + window + 1)
+    return parent.children[start:stop]
+
+
+def _find_child_index(parent: PageNode, child: PageNode) -> int:
+    for index, candidate in enumerate(parent.children):
+        if candidate is child:
+            return index
+    raise RoutingError(f"Node {child.node_id!r} is not attached to parent {parent.node_id!r}.")

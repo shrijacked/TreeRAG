@@ -10,7 +10,6 @@ from typing import Any
 
 import pytest
 
-
 REFERENCE_ROOT = Path(__file__).resolve().parents[2] / ".reference" / "pageindex-rag"
 
 
