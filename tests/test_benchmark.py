@@ -123,6 +123,9 @@ def test_packaged_benchmark_fixtures_load_from_repo() -> None:
 
     jira_cases = load_benchmark_cases(repo_root / "benchmarks" / "jira_cases.json")
     access_cases = load_benchmark_cases(repo_root / "benchmarks" / "access_cases.json")
+    paraphrase_cases = load_benchmark_cases(
+        repo_root / "benchmarks" / "paraphrase_cases.json"
+    )
     corpus_cases = load_benchmark_cases(
         repo_root / "benchmarks" / "operations_corpus_cases.json"
     )
@@ -131,6 +134,10 @@ def test_packaged_benchmark_fixtures_load_from_repo() -> None:
     assert [case.name for case in access_cases] == [
         "emergency_access",
         "access_revocation",
+    ]
+    assert [case.name for case in paraphrase_cases] == [
+        "critical_outage_alerting",
+        "customer_comms_timing",
     ]
     assert [case.expected_document_title for case in corpus_cases] == [
         "Jira Incident Runbook",

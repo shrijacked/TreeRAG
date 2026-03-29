@@ -17,6 +17,8 @@ That means:
 - indexing and querying are still model-dependent
 - cost and latency are real tradeoffs, not hidden details
 
+It is also not a strict keyword tree. Routing is summary-based and LLM-guided, so paraphrases and synonyms can still work. The bigger failure mode is weak summaries or overlapping sections that blur the right branch.
+
 ## Architecture
 
 ```mermaid
@@ -244,6 +246,7 @@ TreeRAG includes a lightweight benchmark harness for repeatable, question-based 
 - `treerag benchmark` measures index build time, total query time, and per-case results
 - [`benchmarks/jira_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/jira_cases.json) gives the repo a concrete Jira-style benchmark target
 - [`benchmarks/access_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/access_cases.json) covers access-control runbooks with approval and revocation flows
+- [`benchmarks/paraphrase_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/paraphrase_cases.json) probes synonym and paraphrase-style questions against the same document structure
 - [`benchmarks/runbook_corpus_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/runbook_corpus_cases.json) exercises corpus routing across multiple runbooks
 - [`benchmarks/operations_corpus_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/operations_corpus_cases.json) expands corpus evals across incident, on-call, and access runbooks
 

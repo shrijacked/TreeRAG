@@ -102,6 +102,65 @@ def test_build_and_query_index_supports_jira_style_runbook(tmp_path: Path) -> No
     assert result.navigation_path == ["root", "Incident Management", "Escalation Policy"]
 
 
+def test_paraphrased_query_still_routes_to_the_same_section(tmp_path: Path) -> None:
+    document_path = _write_document(tmp_path)
+    index_path = tmp_path / "jira.index.json"
+    provider = FakeProvider(
+        segment_responses=[
+            [Section(title="Incident Management", content=" ".join(["policy"] * 301))],
+            [
+                Section(
+                    title="Severity Levels",
+                    content="Update the status page within five minutes.",
+                ),
+                Section(
+                    title="Escalation Policy",
+                    content=(
+                        "Page the primary on-call immediately and escalate "
+                        "after five minutes."
+                    ),
+                ),
+                Section(
+                    title="Notification Rules",
+                    content=(
+                        "Notify support leadership once engineering acknowledges "
+                        "the incident."
+                    ),
+                ),
+            ],
+        ],
+        summary_responses=[
+            "Status updates happen quickly for critical incidents.",
+            "Escalations start with the primary on-call and step up after five minutes.",
+            "Leadership notifications happen after engineering acknowledgment.",
+            "Incident management covers severity, escalation, and communication.",
+            "The runbook explains how to coordinate a Sev-1 incident.",
+        ],
+        route_responses=[0, 1],
+        answer_responses=[
+            "Page the primary on-call immediately and escalate after five minutes."
+        ],
+    )
+
+    build_index(
+        document_path,
+        index_path,
+        IndexConfig(cache_dir=tmp_path / ".cache"),
+        model_config=ModelConfig(),
+        provider=provider,
+    )
+    result = query_index(
+        "who gets alerted first during a critical outage?",
+        index_path,
+        RetrievalConfig(sibling_window=1, include_ancestor_summaries=True),
+        model_config=ModelConfig(),
+        provider=provider,
+    )
+
+    assert result.selected_leaf_title == "Escalation Policy"
+    assert "primary on-call" in result.answer
+
+
 def test_query_index_raises_for_missing_index(tmp_path: Path) -> None:
     with pytest.raises(MissingIndexError):
         query_index(

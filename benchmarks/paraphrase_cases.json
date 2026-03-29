@@ -1,0 +1,16 @@
+{
+  "cases": [
+    {
+      "name": "critical_outage_alerting",
+      "question": "who gets alerted first during a critical outage?",
+      "expected_leaf_title": "Escalation Policy",
+      "expected_answer_substring": "primary on-call"
+    },
+    {
+      "name": "customer_comms_timing",
+      "question": "when should customer-facing teams get looped in?",
+      "expected_leaf_title": "Notification Rules",
+      "expected_answer_substring": "engineering acknowledges"
+    }
+  ]
+}
