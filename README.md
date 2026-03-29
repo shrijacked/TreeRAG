@@ -235,6 +235,7 @@ Current local checks:
 - `ruff check src tests`
 - `mypy src tests`
 - `python -m compileall src tests`
+- manual checklist in [`docs/manual-qa.md`](/Users/owlxshri/Desktop/TreeRAG/docs/manual-qa.md)
 
 GitHub Actions now runs the same gate set on pushes to `main`, pull requests, and manual workflow runs.
 
