@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "treerag"
-version = "0.1.0"
+version = "0.2.0"
 description = "Embedding-free hierarchical retrieval with configurable tree routing and context assembly."
 readme = "README.md"
 requires-python = ">=3.9"
