@@ -10,7 +10,7 @@ from typing import Any
 
 from treerag.api import build_index, query_index
 from treerag.config import IndexConfig, ModelConfig, RetrievalConfig
-from treerag.corpus import build_corpus, query_corpus
+from treerag.corpus import CorpusDocument, CorpusIndex, build_corpus, load_corpus, query_corpus
 from treerag.errors import ParseError
 from treerag.models import PageNode
 from treerag.provider import LLMProvider
@@ -18,6 +18,7 @@ from treerag.retrieval import assemble_context
 
 TREE_RAG_METHOD = "tree_rag"
 KEYWORD_LEAF_METHOD = "keyword_leaf"
+KEYWORD_DOCUMENT_METHOD = "keyword_document"
 FULL_CONTEXT_METHOD = "full_context"
 
 
@@ -454,6 +455,105 @@ def run_corpus_benchmark(
     )
 
 
+def run_corpus_comparison_benchmark(
+    input_paths: list[str | Path],
+    cases_path: str | Path,
+    corpus_path: str | Path,
+    index_config: IndexConfig,
+    retrieval_config: RetrievalConfig,
+    *,
+    model_config: ModelConfig | None = None,
+    provider: LLMProvider | None = None,
+    methods: tuple[str, ...] = (
+        TREE_RAG_METHOD,
+        KEYWORD_DOCUMENT_METHOD,
+        FULL_CONTEXT_METHOD,
+    ),
+) -> ComparisonReport:
+    """Run TreeRAG against simpler corpus-level baselines on the same cases."""
+
+    start_time = perf_counter()
+    cases = load_benchmark_cases(cases_path)
+    active_model_config = model_config or ModelConfig()
+    active_provider: LLMProvider
+    if provider is None:
+        from treerag.provider import OpenAIProvider
+
+        active_provider = OpenAIProvider()
+    else:
+        active_provider = provider
+
+    build_start = perf_counter()
+    build_corpus(
+        input_paths,
+        corpus_path,
+        index_config,
+        model_config=active_model_config,
+        provider=active_provider,
+    )
+    build_duration_ms = (perf_counter() - build_start) * 1000
+
+    corpus_index = load_corpus(corpus_path)
+    source_texts = {
+        document.document_id: Path(document.source_path).read_text(encoding="utf-8")
+        for document in corpus_index.documents
+    }
+
+    method_reports: list[ComparisonMethodReport] = []
+    for method in methods:
+        case_results: list[BenchmarkCaseResult] = []
+        total_query_duration_ms = 0.0
+        for case in cases:
+            query_start = perf_counter()
+            document_title, selected_leaf_title, answer, document_match, leaf_match = (
+                _run_corpus_method(
+                    method,
+                    case,
+                    corpus_index=corpus_index,
+                    source_texts=source_texts,
+                    corpus_path=corpus_path,
+                    retrieval_config=retrieval_config,
+                    model_config=active_model_config,
+                    provider=active_provider,
+                )
+            )
+            query_duration_ms = (perf_counter() - query_start) * 1000
+            total_query_duration_ms += query_duration_ms
+
+            answer_match = case.expected_answer_substring is None or (
+                case.expected_answer_substring.lower() in answer.lower()
+            )
+            case_results.append(
+                BenchmarkCaseResult(
+                    name=case.name,
+                    question=case.question,
+                    document_title=document_title,
+                    selected_leaf_title=selected_leaf_title,
+                    answer=answer,
+                    query_duration_ms=query_duration_ms,
+                    document_match=document_match,
+                    leaf_match=leaf_match,
+                    answer_match=answer_match,
+                )
+            )
+        method_reports.append(
+            ComparisonMethodReport(
+                method=method,
+                total_query_duration_ms=total_query_duration_ms,
+                case_results=case_results,
+            )
+        )
+
+    total_duration_ms = (perf_counter() - start_time) * 1000
+    return ComparisonReport(
+        source_path=str(corpus_path),
+        index_path=str(_resolve_benchmark_target_path(corpus_path)),
+        build_duration_ms=build_duration_ms,
+        total_duration_ms=total_duration_ms,
+        methods=method_reports,
+    )
+
+
 def _resolve_benchmark_target_path(path: str | Path) -> Path:
     candidate = Path(path)
     if candidate.suffix == ".json":
@@ -499,6 +599,73 @@ def _run_single_document_method(
     raise ParseError(f"Unsupported comparison method: {method}")
 
 
+def _run_corpus_method(
+    method: str,
+    case: BenchmarkCase,
+    *,
+    corpus_index: CorpusIndex,
+    source_texts: dict[str, str],
+    corpus_path: str | Path,
+    retrieval_config: RetrievalConfig,
+    model_config: ModelConfig,
+    provider: LLMProvider,
+) -> tuple[str, str, str, bool, bool]:
+    if method == TREE_RAG_METHOD:
+        result = query_corpus(
+            case.question,
+            corpus_path,
+            retrieval_config,
+            model_config=model_config,
+            provider=provider,
+        )
+        document_match = case.expected_document_title is None or (
+            result.document_title == case.expected_document_title
+        )
+        leaf_match = case.expected_leaf_title is None or (
+            result.selected_leaf_title == case.expected_leaf_title
+        )
+        return (
+            result.document_title,
+            result.selected_leaf_title,
+            result.answer,
+            document_match,
+            leaf_match,
+        )
+
+    if method == KEYWORD_DOCUMENT_METHOD:
+        document = _choose_keyword_document(case.question, corpus_index)
+        query_result = query_index(
+            case.question,
+            document.index_path,
+            retrieval_config,
+            model_config=model_config,
+            provider=provider,
+        )
+        document_match = case.expected_document_title is None or (
+            document.title == case.expected_document_title
+        )
+        leaf_match = case.expected_leaf_title is None or (
+            query_result.selected_leaf_title == case.expected_leaf_title
+        )
+        return (
+            document.title,
+            query_result.selected_leaf_title,
+            query_result.answer,
+            document_match,
+            leaf_match,
+        )
+
+    if method == FULL_CONTEXT_METHOD:
+        answer = provider.answer(
+            case.question,
+            context=_full_corpus_context(corpus_index, source_texts),
+            model_config=model_config,
+        )
+        return "(full corpus)", "(full corpus)", answer, True, True
+
+    raise ParseError(f"Unsupported corpus comparison method: {method}")
+
+
 def _choose_keyword_leaf(question: str, root: PageNode) -> PageNode:
     leaves = [node for node in root.walk() if node.is_leaf() and node.content.strip()]
     if not leaves:
@@ -514,6 +681,30 @@ def _choose_keyword_leaf(question: str, root: PageNode) -> PageNode:
             best_leaf = leaf
             best_score = score
     return best_leaf
+
+
+def _choose_keyword_document(question: str, corpus_index: CorpusIndex) -> CorpusDocument:
+    if not corpus_index.documents:
+        raise ParseError("Corpus comparison benchmark requires at least one indexed document.")
+
+    question_tokens = set(_tokenize(question))
+    best_document = corpus_index.documents[0]
+    best_score = -1
+    for document in corpus_index.documents:
+        haystack_tokens = set(_tokenize(f"{document.title} {document.summary}"))
+        score = len(question_tokens & haystack_tokens)
+        if score > best_score:
+            best_document = document
+            best_score = score
+    return best_document
+
+
+def _full_corpus_context(corpus_index: CorpusIndex, source_texts: dict[str, str]) -> str:
+    blocks: list[str] = []
+    for document in corpus_index.documents:
+        blocks.append(f"Document: {document.title}")
+        blocks.append(source_texts[document.document_id].strip())
+    return "\n\n".join(blocks)
 
 
 def _tokenize(text: str) -> list[str]:

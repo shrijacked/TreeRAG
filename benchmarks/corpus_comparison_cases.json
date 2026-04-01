@@ -1,0 +1,11 @@
+{
+  "cases": [
+    {
+      "name": "incident_command_compare",
+      "question": "who runs the room during a critical outage?",
+      "expected_document_title": "On-Call Handbook",
+      "expected_leaf_title": "On-Call Handbook",
+      "expected_answer_substring": "incident commander"
+    }
+  ]
+}

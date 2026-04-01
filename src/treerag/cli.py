@@ -12,6 +12,7 @@ from treerag.benchmark import (
     run_benchmark,
     run_comparison_benchmark,
     run_corpus_benchmark,
+    run_corpus_comparison_benchmark,
 )
 from treerag.config import IndexConfig, ModelConfig, RetrievalConfig
 from treerag.corpus import build_corpus, load_corpus, query_corpus
@@ -149,6 +150,25 @@ def build_parser() -> argparse.ArgumentParser:
     corpus_benchmark_parser.add_argument("--summarization-model")
     corpus_benchmark_parser.add_argument("--routing-model")
     corpus_benchmark_parser.add_argument("--answer-model")
+
+    corpus_compare_parser = subparsers.add_parser(
+        "corpus-compare",
+        help="Compare TreeRAG against simpler corpus-level baselines.",
+    )
+    corpus_compare_parser.add_argument("corpus_path")
+    corpus_compare_parser.add_argument("cases_path")
+    corpus_compare_parser.add_argument("input_paths", nargs="+")
+    _add_provider_argument(corpus_compare_parser)
+    corpus_compare_parser.add_argument("--subsection-threshold", type=int, default=300)
+    corpus_compare_parser.add_argument("--max-depth", type=int, default=4)
+    corpus_compare_parser.add_argument("--cache-dir", default=".cache/treerag")
+    corpus_compare_parser.add_argument("--disable-cache", action="store_true")
+    corpus_compare_parser.add_argument("--sibling-window", type=int, default=1)
+    corpus_compare_parser.add_argument("--exclude-ancestors", action="store_true")
+    corpus_compare_parser.add_argument("--segmentation-model")
+    corpus_compare_parser.add_argument("--summarization-model")
+    corpus_compare_parser.add_argument("--routing-model")
+    corpus_compare_parser.add_argument("--answer-model")
 
     compare_parser = subparsers.add_parser(
         "compare",
@@ -367,6 +387,30 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
             provider=_provider_from_args(args, provider),
         )
         print(json.dumps(corpus_benchmark_report.to_dict(), indent=2))
+        return 0
+
+    if args.command == "corpus-compare":
+        index_config = IndexConfig(
+            subsection_word_threshold=args.subsection_threshold,
+            max_depth=args.max_depth,
+            cache_dir=Path(args.cache_dir),
+            use_cache=not args.disable_cache,
+        )
+        retrieval_config = RetrievalConfig(
+            sibling_window=args.sibling_window,
+            include_ancestor_summaries=not args.exclude_ancestors,
+        )
+        model_config = _full_model_config_from_args(args)
+        corpus_comparison_report = run_corpus_comparison_benchmark(
+            args.input_paths,
+            args.cases_path,
+            args.corpus_path,
+            index_config,
+            retrieval_config,
+            model_config=model_config,
+            provider=_provider_from_args(args, provider),
+        )
+        print(json.dumps(corpus_comparison_report.to_dict(), indent=2))
         return 0
 
     if args.command == "compare":

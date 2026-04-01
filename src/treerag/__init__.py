@@ -10,6 +10,7 @@ from treerag.benchmark import (
     run_benchmark,
     run_comparison_benchmark,
     run_corpus_benchmark,
+    run_corpus_comparison_benchmark,
 )
 from treerag.config import IndexConfig, ModelConfig, RetrievalConfig
 from treerag.corpus import (
@@ -51,6 +52,7 @@ __all__ = [
     "query_corpus",
     "run_benchmark",
     "run_comparison_benchmark",
+    "run_corpus_comparison_benchmark",
     "run_corpus_benchmark",
 ]
 
