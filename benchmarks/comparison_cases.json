@@ -1,0 +1,10 @@
+{
+  "cases": [
+    {
+      "name": "q3_debt_trends_compare",
+      "question": "what were the debt trends in q3?",
+      "expected_leaf_title": "Appendix G - Debt Schedule",
+      "expected_answer_substring": "$61 million"
+    }
+  ]
+}

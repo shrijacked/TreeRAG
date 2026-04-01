@@ -12,7 +12,13 @@ from treerag.api import build_index, query_index
 from treerag.config import IndexConfig, ModelConfig, RetrievalConfig
 from treerag.corpus import build_corpus, query_corpus
 from treerag.errors import ParseError
+from treerag.models import PageNode
 from treerag.provider import LLMProvider
+from treerag.retrieval import assemble_context
+
+TREE_RAG_METHOD = "tree_rag"
+KEYWORD_LEAF_METHOD = "keyword_leaf"
+FULL_CONTEXT_METHOD = "full_context"
 
 
 @dataclass(frozen=True)
@@ -93,6 +99,64 @@ class BenchmarkReport:
             "passed_count": self.passed_count,
             "failed_count": self.failed_count,
             "cases": [result.to_dict() for result in self.case_results],
+        }
+
+
+@dataclass(frozen=True)
+class ComparisonMethodReport:
+    """Per-method results for a comparison benchmark run."""
+
+    method: str
+    total_query_duration_ms: float
+    case_results: list[BenchmarkCaseResult]
+
+    @property
+    def case_count(self) -> int:
+        return len(self.case_results)
+
+    @property
+    def passed_count(self) -> int:
+        return sum(1 for result in self.case_results if result.passed)
+
+    @property
+    def failed_count(self) -> int:
+        return self.case_count - self.passed_count
+
+    @property
+    def average_query_duration_ms(self) -> float:
+        if not self.case_results:
+            return 0.0
+        return self.total_query_duration_ms / len(self.case_results)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "method": self.method,
+            "case_count": self.case_count,
+            "passed_count": self.passed_count,
+            "failed_count": self.failed_count,
+            "total_query_duration_ms": round(self.total_query_duration_ms, 3),
+            "average_query_duration_ms": round(self.average_query_duration_ms, 3),
+            "cases": [result.to_dict() for result in self.case_results],
+        }
+
+
+@dataclass(frozen=True)
+class ComparisonReport:
+    """Aggregate comparison benchmark output."""
+
+    source_path: str
+    index_path: str
+    build_duration_ms: float
+    total_duration_ms: float
+    methods: list[ComparisonMethodReport]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_path": self.source_path,
+            "index_path": self.index_path,
+            "build_duration_ms": round(self.build_duration_ms, 3),
+            "total_duration_ms": round(self.total_duration_ms, 3),
+            "methods": [method.to_dict() for method in self.methods],
         }
 
 
@@ -225,6 +289,98 @@ def run_benchmark(
     )
 
 
+def run_comparison_benchmark(
+    input_path: str | Path,
+    cases_path: str | Path,
+    index_path: str | Path,
+    index_config: IndexConfig,
+    retrieval_config: RetrievalConfig,
+    *,
+    model_config: ModelConfig | None = None,
+    provider: LLMProvider | None = None,
+    methods: tuple[str, ...] = (
+        TREE_RAG_METHOD,
+        KEYWORD_LEAF_METHOD,
+        FULL_CONTEXT_METHOD,
+    ),
+) -> ComparisonReport:
+    """Run TreeRAG against simpler baselines on the same benchmark cases."""
+
+    start_time = perf_counter()
+    cases = load_benchmark_cases(cases_path)
+    active_model_config = model_config or ModelConfig()
+    active_provider: LLMProvider
+    if provider is None:
+        from treerag.provider import OpenAIProvider
+
+        active_provider = OpenAIProvider()
+    else:
+        active_provider = provider
+
+    build_start = perf_counter()
+    document_index = build_index(
+        input_path,
+        index_path,
+        index_config,
+        model_config=active_model_config,
+        provider=active_provider,
+    )
+    build_duration_ms = (perf_counter() - build_start) * 1000
+    source_text = Path(input_path).read_text(encoding="utf-8")
+
+    method_reports: list[ComparisonMethodReport] = []
+    for method in methods:
+        case_results: list[BenchmarkCaseResult] = []
+        total_query_duration_ms = 0.0
+        for case in cases:
+            query_start = perf_counter()
+            selected_leaf_title, answer, leaf_match = _run_single_document_method(
+                method,
+                case,
+                source_text=source_text,
+                root=document_index.root,
+                retrieval_config=retrieval_config,
+                model_config=active_model_config,
+                provider=active_provider,
+                index_path=index_path,
+            )
+            query_duration_ms = (perf_counter() - query_start) * 1000
+            total_query_duration_ms += query_duration_ms
+
+            answer_match = case.expected_answer_substring is None or (
+                case.expected_answer_substring.lower() in answer.lower()
+            )
+            case_results.append(
+                BenchmarkCaseResult(
+                    name=case.name,
+                    question=case.question,
+                    document_title=None,
+                    selected_leaf_title=selected_leaf_title,
+                    answer=answer,
+                    query_duration_ms=query_duration_ms,
+                    document_match=True,
+                    leaf_match=leaf_match,
+                    answer_match=answer_match,
+                )
+            )
+        method_reports.append(
+            ComparisonMethodReport(
+                method=method,
+                total_query_duration_ms=total_query_duration_ms,
+                case_results=case_results,
+            )
+        )
+
+    total_duration_ms = (perf_counter() - start_time) * 1000
+    return ComparisonReport(
+        source_path=str(input_path),
+        index_path=str(index_path),
+        build_duration_ms=build_duration_ms,
+        total_duration_ms=total_duration_ms,
+        methods=method_reports,
+    )
+
+
 def run_corpus_benchmark(
     input_paths: list[str | Path],
     cases_path: str | Path,
@@ -303,3 +459,64 @@ def _resolve_benchmark_target_path(path: str | Path) -> Path:
     if candidate.suffix == ".json":
         return candidate
     return candidate / "corpus.json"
+
+
+def _run_single_document_method(
+    method: str,
+    case: BenchmarkCase,
+    *,
+    source_text: str,
+    root: PageNode,
+    retrieval_config: RetrievalConfig,
+    model_config: ModelConfig,
+    provider: LLMProvider,
+    index_path: str | Path,
+) -> tuple[str, str, bool]:
+    if method == TREE_RAG_METHOD:
+        result = query_index(
+            case.question,
+            index_path,
+            retrieval_config,
+            model_config=model_config,
+            provider=provider,
+        )
+        leaf_match = case.expected_leaf_title is None or (
+            result.selected_leaf_title == case.expected_leaf_title
+        )
+        return result.selected_leaf_title, result.answer, leaf_match
+
+    if method == KEYWORD_LEAF_METHOD:
+        leaf = _choose_keyword_leaf(case.question, root)
+        context, _ = assemble_context(leaf, config=retrieval_config)
+        answer = provider.answer(case.question, context=context, model_config=model_config)
+        leaf_match = case.expected_leaf_title is None or leaf.title == case.expected_leaf_title
+        return leaf.title, answer, leaf_match
+
+    if method == FULL_CONTEXT_METHOD:
+        answer = provider.answer(case.question, context=source_text, model_config=model_config)
+        return "(full document)", answer, True
+
+    raise ParseError(f"Unsupported comparison method: {method}")
+
+
+def _choose_keyword_leaf(question: str, root: PageNode) -> PageNode:
+    leaves = [node for node in root.walk() if node.is_leaf() and node.content.strip()]
+    if not leaves:
+        raise ParseError("Comparison benchmark could not find any leaf content to score.")
+
+    question_tokens = set(_tokenize(question))
+    best_leaf = leaves[0]
+    best_score = -1
+    for leaf in leaves:
+        haystack_tokens = set(_tokenize(f"{leaf.title} {leaf.content}"))
+        score = len(question_tokens & haystack_tokens)
+        if score > best_score:
+            best_leaf = leaf
+            best_score = score
+    return best_leaf
+
+
+def _tokenize(text: str) -> list[str]:
+    import re
+
+    return re.findall(r"[a-z0-9]+", text.lower())

@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
 from tests.support.fake_provider import FakeProvider
-from treerag.benchmark import load_benchmark_cases, run_benchmark, run_corpus_benchmark
+from treerag.benchmark import (
+    load_benchmark_cases,
+    run_benchmark,
+    run_comparison_benchmark,
+    run_corpus_benchmark,
+)
 from treerag.cli import main
 from treerag.config import IndexConfig, ModelConfig, RetrievalConfig
 from treerag.models import Section
@@ -101,6 +107,58 @@ def _incident_response_section() -> Section:
     )
 
 
+def _write_comparison_document(tmp_path: Path) -> Path:
+    document_path = tmp_path / "finance_review.md"
+    document_path.write_text(
+        (
+            "# Q3 Finance Review\n\n"
+            "## Executive Summary\n"
+            "Debt trends are discussed later in the report.\n\n"
+            "## Liquidity Overview\n"
+            "In Q3, management said leverage was improving and debt schedules were being "
+            "simplified.\n\n"
+            "## Appendix G - Debt Schedule\n"
+            "At September 30, short-term borrowings were $61 million versus $84 million at "
+            "June 30.\n"
+        ),
+        encoding="utf-8",
+    )
+    return document_path
+
+
+def _write_comparison_cases(tmp_path: Path) -> Path:
+    cases_path = tmp_path / "comparison-cases.json"
+    cases_path.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "name": "debt_trends",
+                        "question": "what were the debt trends in q3?",
+                        "expected_leaf_title": "Appendix G - Debt Schedule",
+                        "expected_answer_substring": "$61 million",
+                    }
+                ]
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return cases_path
+
+
+@dataclass
+class ContextAwareComparisonProvider(FakeProvider):
+    def answer(self, question: str, *, context: str, model_config: ModelConfig) -> str:
+        self.answer_calls += 1
+        lowered = context.lower()
+        if "$61 million" in context:
+            return "Short-term borrowings fell to $61 million from $84 million."
+        if "leverage was improving" in lowered:
+            return "Management said leverage was improving."
+        return "I could not find the debt schedule."
+
+
 def test_load_benchmark_cases_parses_json_fixture(tmp_path: Path) -> None:
     cases_path = _write_cases(tmp_path)
 
@@ -124,6 +182,7 @@ def test_packaged_benchmark_fixtures_load_from_repo() -> None:
     jira_cases = load_benchmark_cases(repo_root / "benchmarks" / "jira_cases.json")
     access_cases = load_benchmark_cases(repo_root / "benchmarks" / "access_cases.json")
     appendix_cases = load_benchmark_cases(repo_root / "benchmarks" / "appendix_cases.json")
+    comparison_cases = load_benchmark_cases(repo_root / "benchmarks" / "comparison_cases.json")
     paraphrase_cases = load_benchmark_cases(
         repo_root / "benchmarks" / "paraphrase_cases.json"
     )
@@ -146,6 +205,7 @@ def test_packaged_benchmark_fixtures_load_from_repo() -> None:
         "Appendix G - Debt Schedule",
         "Appendix H - Covenant Notes",
     ]
+    assert [case.name for case in comparison_cases] == ["q3_debt_trends_compare"]
     assert [case.name for case in paraphrase_cases] == [
         "critical_outage_alerting",
         "customer_comms_timing",
@@ -268,6 +328,119 @@ def test_benchmark_cli_outputs_summary_json(
     assert output["passed_count"] == 2
     assert output["failed_count"] == 0
     assert output["case_count"] == 2
+
+
+def test_run_comparison_benchmark_reports_method_level_results(tmp_path: Path) -> None:
+    document_path = _write_comparison_document(tmp_path)
+    cases_path = _write_comparison_cases(tmp_path)
+    index_path = tmp_path / "finance.index.json"
+    provider = ContextAwareComparisonProvider(
+        segment_responses=[
+            [
+                Section(
+                    title="Executive Summary",
+                    content="Debt trends are discussed later in the report.",
+                ),
+                Section(
+                    title="Liquidity Overview",
+                    content=(
+                        "In Q3, management said leverage was improving and debt schedules "
+                        "were being simplified."
+                    ),
+                ),
+                Section(
+                    title="Appendix G - Debt Schedule",
+                    content=(
+                        "At September 30, short-term borrowings were $61 million versus "
+                        "$84 million at June 30."
+                    ),
+                ),
+            ]
+        ],
+        summary_responses=[
+            "Debt trends are discussed later in the report.",
+            "Management said leverage was improving in Q3.",
+            "Short-term borrowings fell to $61 million from $84 million.",
+            "The report covers summary, liquidity, and debt schedule details.",
+        ],
+        route_responses=[2],
+    )
+
+    report = run_comparison_benchmark(
+        document_path,
+        cases_path,
+        index_path,
+        IndexConfig(cache_dir=tmp_path / ".cache", subsection_word_threshold=999),
+        RetrievalConfig(sibling_window=0, include_ancestor_summaries=False),
+        model_config=ModelConfig(),
+        provider=provider,
+    )
+
+    methods = {method.method: method for method in report.methods}
+    assert set(methods) == {"tree_rag", "keyword_leaf", "full_context"}
+    assert methods["tree_rag"].passed_count == 1
+    assert methods["keyword_leaf"].failed_count == 1
+    assert methods["full_context"].passed_count == 1
+
+
+def test_compare_cli_outputs_method_summary_json(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    document_path = _write_comparison_document(tmp_path)
+    cases_path = _write_comparison_cases(tmp_path)
+    index_path = tmp_path / "finance.index.json"
+    provider = ContextAwareComparisonProvider(
+        segment_responses=[
+            [
+                Section(
+                    title="Executive Summary",
+                    content="Debt trends are discussed later in the report.",
+                ),
+                Section(
+                    title="Liquidity Overview",
+                    content=(
+                        "In Q3, management said leverage was improving and debt schedules "
+                        "were being simplified."
+                    ),
+                ),
+                Section(
+                    title="Appendix G - Debt Schedule",
+                    content=(
+                        "At September 30, short-term borrowings were $61 million versus "
+                        "$84 million at June 30."
+                    ),
+                ),
+            ]
+        ],
+        summary_responses=[
+            "Debt trends are discussed later in the report.",
+            "Management said leverage was improving in Q3.",
+            "Short-term borrowings fell to $61 million from $84 million.",
+            "The report covers summary, liquidity, and debt schedule details.",
+        ],
+        route_responses=[2],
+    )
+
+    assert (
+        main(
+            [
+                "compare",
+                str(document_path),
+                str(cases_path),
+                "--index-path",
+                str(index_path),
+                "--cache-dir",
+                str(tmp_path / ".cache"),
+            ],
+            provider=provider,
+        )
+        == 0
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    methods = {method["method"]: method for method in output["methods"]}
+    assert methods["tree_rag"]["passed_count"] == 1
+    assert methods["keyword_leaf"]["failed_count"] == 1
 
 
 def test_run_corpus_benchmark_reports_document_matches(tmp_path: Path) -> None:
