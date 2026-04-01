@@ -502,6 +502,62 @@ def test_compare_cli_outputs_method_summary_json(
     assert methods["keyword_leaf"]["failed_count"] == 1
 
 
+def test_run_comparison_benchmark_repeat_count_records_samples(tmp_path: Path) -> None:
+    document_path = _write_comparison_document(tmp_path)
+    cases_path = _write_comparison_cases(tmp_path)
+    index_path = tmp_path / "finance.index.json"
+    provider = ContextAwareComparisonProvider(
+        segment_responses=[
+            [
+                Section(
+                    title="Executive Summary",
+                    content="Debt trends are discussed later in the report.",
+                ),
+                Section(
+                    title="Liquidity Overview",
+                    content=(
+                        "In Q3, management said leverage was improving and debt schedules "
+                        "were being simplified."
+                    ),
+                ),
+                Section(
+                    title="Appendix G - Debt Schedule",
+                    content=(
+                        "At September 30, short-term borrowings were $61 million versus "
+                        "$84 million at June 30."
+                    ),
+                ),
+            ]
+        ],
+        summary_responses=[
+            "Debt trends are discussed later in the report.",
+            "Management said leverage was improving in Q3.",
+            "Short-term borrowings fell to $61 million from $84 million.",
+            "The report covers summary, liquidity, and debt schedule details.",
+        ],
+        route_responses=[2, 2, 2],
+    )
+
+    report = run_comparison_benchmark(
+        document_path,
+        cases_path,
+        index_path,
+        IndexConfig(cache_dir=tmp_path / ".cache", subsection_word_threshold=999),
+        RetrievalConfig(sibling_window=0, include_ancestor_summaries=False),
+        model_config=ModelConfig(),
+        provider=provider,
+        repeat_count=3,
+    )
+
+    method = {entry.method: entry for entry in report.methods}["tree_rag"]
+    case_result = method.case_results[0]
+    assert method.total_runs == 3
+    assert len(case_result.query_samples_ms) == 3
+    assert case_result.document_consistent is True
+    assert case_result.leaf_consistent is True
+    assert case_result.answer_consistent is True
+
+
 def test_run_corpus_benchmark_reports_document_matches(tmp_path: Path) -> None:
     access_path, incidents_path = _write_corpus_documents(tmp_path)
     cases_path = _write_corpus_cases(tmp_path)
@@ -689,3 +745,60 @@ def test_corpus_compare_cli_outputs_method_summary_json(
     methods = {method["method"]: method for method in output["methods"]}
     assert methods["tree_rag"]["passed_count"] == 1
     assert methods["keyword_document"]["failed_count"] == 1
+
+
+def test_corpus_compare_cli_repeat_count_records_total_runs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    updates_path, handbook_path = _write_corpus_comparison_documents(tmp_path)
+    cases_path = _write_corpus_comparison_cases(tmp_path)
+    corpus_path = tmp_path / "ops-runbooks"
+    provider = ContextAwareCorpusComparisonProvider(
+        segment_responses=[
+            [
+                Section(
+                    title="Critical Outage Updates",
+                    content="During a critical outage, responders share status updates in Slack.",
+                )
+            ],
+            [
+                Section(
+                    title="On-Call Handbook",
+                    content=(
+                        "The incident commander runs the room and coordinates responders "
+                        "during a Sev-1."
+                    ),
+                )
+            ],
+        ],
+        summary_responses=[
+            "Responders share status updates in Slack during critical outages.",
+            "This document explains outage status updates.",
+            "The incident commander runs the room during a Sev-1.",
+            "This document explains incident command responsibilities.",
+        ],
+        route_responses=[1, 0, 1, 0, 0, 0],
+    )
+
+    assert (
+        main(
+            [
+                "corpus-compare",
+                str(corpus_path),
+                str(cases_path),
+                str(updates_path),
+                str(handbook_path),
+                "--cache-dir",
+                str(tmp_path / ".cache"),
+                "--repeat",
+                "2",
+            ],
+            provider=provider,
+        )
+        == 0
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    method = {entry["method"]: entry for entry in output["methods"]}["tree_rag"]
+    assert method["total_runs"] == 2
+    assert len(method["cases"][0]["query_samples_ms"]) == 2

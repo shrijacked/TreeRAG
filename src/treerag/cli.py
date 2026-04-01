@@ -163,6 +163,7 @@ def build_parser() -> argparse.ArgumentParser:
     corpus_compare_parser.add_argument("--max-depth", type=int, default=4)
     corpus_compare_parser.add_argument("--cache-dir", default=".cache/treerag")
     corpus_compare_parser.add_argument("--disable-cache", action="store_true")
+    corpus_compare_parser.add_argument("--repeat", type=int, default=1)
     corpus_compare_parser.add_argument("--sibling-window", type=int, default=1)
     corpus_compare_parser.add_argument("--exclude-ancestors", action="store_true")
     corpus_compare_parser.add_argument("--segmentation-model")
@@ -185,6 +186,7 @@ def build_parser() -> argparse.ArgumentParser:
     compare_parser.add_argument("--max-depth", type=int, default=4)
     compare_parser.add_argument("--cache-dir", default=".cache/treerag")
     compare_parser.add_argument("--disable-cache", action="store_true")
+    compare_parser.add_argument("--repeat", type=int, default=1)
     compare_parser.add_argument("--sibling-window", type=int, default=1)
     compare_parser.add_argument("--exclude-ancestors", action="store_true")
     compare_parser.add_argument("--segmentation-model")
@@ -409,6 +411,7 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
             retrieval_config,
             model_config=model_config,
             provider=_provider_from_args(args, provider),
+            repeat_count=args.repeat,
         )
         print(json.dumps(corpus_comparison_report.to_dict(), indent=2))
         return 0
@@ -433,6 +436,7 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
             retrieval_config,
             model_config=model_config,
             provider=_provider_from_args(args, provider),
+            repeat_count=args.repeat,
         )
         print(json.dumps(comparison_report.to_dict(), indent=2))
         return 0

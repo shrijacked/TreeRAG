@@ -46,10 +46,18 @@ class BenchmarkCaseResult:
     document_match: bool
     leaf_match: bool
     answer_match: bool
+    query_samples_ms: tuple[float, ...] = ()
+    document_consistent: bool = True
+    leaf_consistent: bool = True
+    answer_consistent: bool = True
 
     @property
     def passed(self) -> bool:
         return self.document_match and self.leaf_match and self.answer_match
+
+    @property
+    def query_sample_count(self) -> int:
+        return len(self.query_samples_ms) or 1
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -59,9 +67,14 @@ class BenchmarkCaseResult:
             "selected_leaf_title": self.selected_leaf_title,
             "answer": self.answer,
             "query_duration_ms": round(self.query_duration_ms, 3),
+            "query_samples_ms": [round(duration, 3) for duration in self.query_samples_ms],
+            "query_sample_count": self.query_sample_count,
             "document_match": self.document_match,
             "leaf_match": self.leaf_match,
             "answer_match": self.answer_match,
+            "document_consistent": self.document_consistent,
+            "leaf_consistent": self.leaf_consistent,
+            "answer_consistent": self.answer_consistent,
             "passed": self.passed,
         }
 
@@ -109,6 +122,7 @@ class ComparisonMethodReport:
 
     method: str
     total_query_duration_ms: float
+    total_runs: int
     case_results: list[BenchmarkCaseResult]
 
     @property
@@ -125,14 +139,15 @@ class ComparisonMethodReport:
 
     @property
     def average_query_duration_ms(self) -> float:
-        if not self.case_results:
+        if self.total_runs == 0:
             return 0.0
-        return self.total_query_duration_ms / len(self.case_results)
+        return self.total_query_duration_ms / self.total_runs
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "method": self.method,
             "case_count": self.case_count,
+            "total_runs": self.total_runs,
             "passed_count": self.passed_count,
             "failed_count": self.failed_count,
             "total_query_duration_ms": round(self.total_query_duration_ms, 3),
@@ -299,6 +314,7 @@ def run_comparison_benchmark(
     *,
     model_config: ModelConfig | None = None,
     provider: LLMProvider | None = None,
+    repeat_count: int = 1,
     methods: tuple[str, ...] = (
         TREE_RAG_METHOD,
         KEYWORD_LEAF_METHOD,
@@ -306,6 +322,9 @@ def run_comparison_benchmark(
     ),
 ) -> ComparisonReport:
     """Run TreeRAG against simpler baselines on the same benchmark cases."""
+
+    if repeat_count < 1:
+        raise ParseError("Comparison benchmark repeat_count must be at least 1.")
 
     start_time = perf_counter()
     cases = load_benchmark_cases(cases_path)
@@ -333,20 +352,32 @@ def run_comparison_benchmark(
     for method in methods:
         case_results: list[BenchmarkCaseResult] = []
         total_query_duration_ms = 0.0
+        total_runs = 0
         for case in cases:
-            query_start = perf_counter()
-            selected_leaf_title, answer, leaf_match = _run_single_document_method(
-                method,
-                case,
-                source_text=source_text,
-                root=document_index.root,
-                retrieval_config=retrieval_config,
-                model_config=active_model_config,
-                provider=active_provider,
-                index_path=index_path,
-            )
-            query_duration_ms = (perf_counter() - query_start) * 1000
-            total_query_duration_ms += query_duration_ms
+            sample_durations_ms: list[float] = []
+            observed_leaf_titles: list[str] = []
+            observed_answers: list[str] = []
+            selected_leaf_title = ""
+            answer = ""
+            leaf_match = False
+            for _ in range(repeat_count):
+                query_start = perf_counter()
+                selected_leaf_title, answer, leaf_match = _run_single_document_method(
+                    method,
+                    case,
+                    source_text=source_text,
+                    root=document_index.root,
+                    retrieval_config=retrieval_config,
+                    model_config=active_model_config,
+                    provider=active_provider,
+                    index_path=index_path,
+                )
+                query_duration_ms = (perf_counter() - query_start) * 1000
+                sample_durations_ms.append(query_duration_ms)
+                total_query_duration_ms += query_duration_ms
+                total_runs += 1
+                observed_leaf_titles.append(selected_leaf_title)
+                observed_answers.append(answer)
 
             answer_match = case.expected_answer_substring is None or (
                 case.expected_answer_substring.lower() in answer.lower()
@@ -358,16 +389,21 @@ def run_comparison_benchmark(
                     document_title=None,
                     selected_leaf_title=selected_leaf_title,
                     answer=answer,
-                    query_duration_ms=query_duration_ms,
+                    query_duration_ms=sum(sample_durations_ms) / len(sample_durations_ms),
                     document_match=True,
                     leaf_match=leaf_match,
                     answer_match=answer_match,
+                    query_samples_ms=tuple(sample_durations_ms),
+                    document_consistent=True,
+                    leaf_consistent=len(set(observed_leaf_titles)) == 1,
+                    answer_consistent=len(set(observed_answers)) == 1,
                 )
             )
         method_reports.append(
             ComparisonMethodReport(
                 method=method,
                 total_query_duration_ms=total_query_duration_ms,
+                total_runs=total_runs,
                 case_results=case_results,
             )
         )
@@ -464,6 +500,7 @@ def run_corpus_comparison_benchmark(
     *,
     model_config: ModelConfig | None = None,
     provider: LLMProvider | None = None,
+    repeat_count: int = 1,
     methods: tuple[str, ...] = (
         TREE_RAG_METHOD,
         KEYWORD_DOCUMENT_METHOD,
@@ -471,6 +508,9 @@ def run_corpus_comparison_benchmark(
     ),
 ) -> ComparisonReport:
     """Run TreeRAG against simpler corpus-level baselines on the same cases."""
+
+    if repeat_count < 1:
+        raise ParseError("Corpus comparison benchmark repeat_count must be at least 1.")
 
     start_time = perf_counter()
     cases = load_benchmark_cases(cases_path)
@@ -503,22 +543,38 @@ def run_corpus_comparison_benchmark(
     for method in methods:
         case_results: list[BenchmarkCaseResult] = []
         total_query_duration_ms = 0.0
+        total_runs = 0
         for case in cases:
-            query_start = perf_counter()
-            document_title, selected_leaf_title, answer, document_match, leaf_match = (
-                _run_corpus_method(
-                    method,
-                    case,
-                    corpus_index=corpus_index,
-                    source_texts=source_texts,
-                    corpus_path=corpus_path,
-                    retrieval_config=retrieval_config,
-                    model_config=active_model_config,
-                    provider=active_provider,
+            sample_durations_ms: list[float] = []
+            observed_document_titles: list[str] = []
+            observed_leaf_titles: list[str] = []
+            observed_answers: list[str] = []
+            document_title = ""
+            selected_leaf_title = ""
+            answer = ""
+            document_match = False
+            leaf_match = False
+            for _ in range(repeat_count):
+                query_start = perf_counter()
+                document_title, selected_leaf_title, answer, document_match, leaf_match = (
+                    _run_corpus_method(
+                        method,
+                        case,
+                        corpus_index=corpus_index,
+                        source_texts=source_texts,
+                        corpus_path=corpus_path,
+                        retrieval_config=retrieval_config,
+                        model_config=active_model_config,
+                        provider=active_provider,
+                    )
                 )
-            )
-            query_duration_ms = (perf_counter() - query_start) * 1000
-            total_query_duration_ms += query_duration_ms
+                query_duration_ms = (perf_counter() - query_start) * 1000
+                sample_durations_ms.append(query_duration_ms)
+                total_query_duration_ms += query_duration_ms
+                total_runs += 1
+                observed_document_titles.append(document_title)
+                observed_leaf_titles.append(selected_leaf_title)
+                observed_answers.append(answer)
 
             answer_match = case.expected_answer_substring is None or (
                 case.expected_answer_substring.lower() in answer.lower()
@@ -530,16 +586,21 @@ def run_corpus_comparison_benchmark(
                     document_title=document_title,
                     selected_leaf_title=selected_leaf_title,
                     answer=answer,
-                    query_duration_ms=query_duration_ms,
+                    query_duration_ms=sum(sample_durations_ms) / len(sample_durations_ms),
                     document_match=document_match,
                     leaf_match=leaf_match,
                     answer_match=answer_match,
+                    query_samples_ms=tuple(sample_durations_ms),
+                    document_consistent=len(set(observed_document_titles)) == 1,
+                    leaf_consistent=len(set(observed_leaf_titles)) == 1,
+                    answer_consistent=len(set(observed_answers)) == 1,
                 )
             )
         method_reports.append(
             ComparisonMethodReport(
                 method=method,
                 total_query_duration_ms=total_query_duration_ms,
+                total_runs=total_runs,
                 case_results=case_results,
             )
         )
