@@ -1,5 +1,6 @@
 .reference/
 .venv/
+.venv-gemini/
 .cache/
 .mypy_cache/
 .pytest_cache/

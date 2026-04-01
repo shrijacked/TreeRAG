@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -13,7 +14,7 @@ from treerag.errors import ParseError, ProviderError, RoutingError
 from treerag.models import Section
 
 try:
-    from google import genai  # type: ignore[import-not-found]
+    genai: Any | None = importlib.import_module("google.genai")
 except ImportError:  # pragma: no cover - exercised through create_provider failure paths
     genai = None
 
