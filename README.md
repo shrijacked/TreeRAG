@@ -7,6 +7,11 @@
 
 TreeRAG is an embedding-free hierarchical retrieval system for runbook-style knowledge bases. It packages recursive tree building, cache-aware indexing, sibling-context retrieval, source-traceable answers, multi-document corpus routing, and a typed CLI/API into a production-ready Python project.
 
+Provider support:
+
+- OpenAI is the default backend.
+- Gemini is also supported through the optional `gemini` extra and CLI/API provider selection.
+
 ## What "Embedding-Free" Means Here
 
 TreeRAG does not use embeddings or a vector database to navigate the index. It still uses LLM calls for segmentation, summarization, routing, and answer generation.
@@ -39,6 +44,7 @@ flowchart LR
 - Typed corpus API: `build_corpus(...)`, `load_corpus(...)`, and `query_corpus(...)`
 - Benchmark APIs: `run_benchmark(...)` and `run_corpus_benchmark(...)`
 - CLI commands: `treerag index`, `treerag ask`, `treerag repl`, `treerag inspect`, `treerag corpus-index`, `treerag corpus-ask`, `treerag corpus-repl`, `treerag corpus-inspect`, `treerag benchmark`, `treerag corpus-benchmark`
+- Provider selection through `--provider openai|gemini`
 - Recursive parsing beyond depth two
 - File-backed caches for segmentation and summaries
 - Explicit routing errors instead of silent branch fallback
@@ -55,6 +61,15 @@ python3 -m venv .venv
 .venv/bin/pip install -e .[dev]
 export OPENAI_API_KEY=your_api_key_here
 ```
+
+To use Gemini instead of OpenAI:
+
+```bash
+.venv/bin/pip install -e '.[dev,gemini]'
+export GEMINI_API_KEY=your_api_key_here
+```
+
+The Gemini SDK currently targets Python 3.10+, so Gemini support should be used from a Python 3.10+ environment.
 
 ## Quick Start
 
@@ -122,6 +137,18 @@ Stay in an interactive loop for follow-up questions:
 ```bash
 treerag repl build/jira.index.json
 treerag corpus-repl build/runbooks
+```
+
+Run the same flow with Gemini-backed defaults:
+
+```bash
+treerag index examples/jira_runbook.md build/jira.gemini.index.json \
+  --provider gemini \
+  --cache-dir .cache/treerag
+
+treerag ask build/jira.gemini.index.json "How do Sev-1 escalations work?" \
+  --provider gemini \
+  --sibling-window 1
 ```
 
 ## CLI Usage
@@ -213,10 +240,19 @@ treerag ask build/jira.index.json "Who gets paged first?" \
   --answer-model gpt-5.4
 ```
 
+When you pass `--provider gemini`, TreeRAG swaps to Gemini model defaults automatically unless you override them explicitly.
+
 ## Python Usage
 
 ```python
-from treerag import IndexConfig, ModelConfig, RetrievalConfig, build_index, query_index
+from treerag import (
+    GeminiProvider,
+    IndexConfig,
+    ModelConfig,
+    RetrievalConfig,
+    build_index,
+    query_index,
+)
 
 index = build_index(
     "examples/jira_runbook.md",
@@ -235,6 +271,17 @@ result = query_index(
 print(result.answer)
 print(result.context)
 print(result.source_references)
+
+gemini_result = query_index(
+    "How do Sev-1 escalations work?",
+    "build/jira.index.json",
+    RetrievalConfig(sibling_window=1, include_ancestor_summaries=True),
+    model_config=ModelConfig(
+        routing_model="gemini-2.5-flash",
+        answer_model="gemini-2.5-flash",
+    ),
+    provider=GeminiProvider(),
+)
 ```
 
 ## Good Fits

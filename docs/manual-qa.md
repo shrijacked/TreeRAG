@@ -23,6 +23,13 @@ python3 -m venv .venv
 export OPENAI_API_KEY=your_key_here
 ```
 
+- Optional Gemini setup on Python 3.10+:
+
+```bash
+.venv/bin/pip install -e '.[dev,gemini]'
+export GEMINI_API_KEY=your_key_here
+```
+
 ## Single-Document Flow
 
 - Build the sample index:
@@ -50,6 +57,18 @@ treerag ask build/jira.index.json "how do sev-1 escalations work?" \
 
 ```bash
 treerag inspect build/jira.index.json
+```
+
+- Optional Gemini single-document pass:
+
+```bash
+treerag index examples/jira_runbook.md build/jira.gemini.index.json \
+  --provider gemini \
+  --cache-dir .cache/treerag
+
+treerag ask build/jira.gemini.index.json "how do sev-1 escalations work?" \
+  --provider gemini \
+  --sibling-window 1
 ```
 
 ## Corpus Flow
