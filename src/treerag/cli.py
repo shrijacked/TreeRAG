@@ -11,8 +11,17 @@ from treerag.api import build_index, query_index
 from treerag.benchmark import run_benchmark, run_corpus_benchmark
 from treerag.config import IndexConfig, ModelConfig, RetrievalConfig
 from treerag.corpus import build_corpus, load_corpus, query_corpus
-from treerag.provider import LLMProvider
+from treerag.provider import LLMProvider, create_provider
 from treerag.storage import load_index
+
+OPENAI_PROVIDER_NAME = "openai"
+GEMINI_PROVIDER_NAME = "gemini"
+GEMINI_DEFAULT_MODELS = ModelConfig(
+    segmentation_model="gemini-2.5-flash",
+    summarization_model="gemini-2.5-flash",
+    routing_model="gemini-2.5-flash",
+    answer_model="gemini-2.5-flash",
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,30 +31,33 @@ def build_parser() -> argparse.ArgumentParser:
     index_parser = subparsers.add_parser("index", help="Build a TreeRAG index.")
     index_parser.add_argument("input_path")
     index_parser.add_argument("output_path")
+    _add_provider_argument(index_parser)
     index_parser.add_argument("--subsection-threshold", type=int, default=300)
     index_parser.add_argument("--max-depth", type=int, default=4)
     index_parser.add_argument("--cache-dir", default=".cache/treerag")
     index_parser.add_argument("--disable-cache", action="store_true")
-    index_parser.add_argument("--segmentation-model", default=ModelConfig().segmentation_model)
-    index_parser.add_argument("--summarization-model", default=ModelConfig().summarization_model)
+    index_parser.add_argument("--segmentation-model")
+    index_parser.add_argument("--summarization-model")
 
     ask_parser = subparsers.add_parser("ask", help="Answer a question using a saved index.")
     ask_parser.add_argument("index_path")
     ask_parser.add_argument("question")
+    _add_provider_argument(ask_parser)
     ask_parser.add_argument("--sibling-window", type=int, default=1)
     ask_parser.add_argument("--exclude-ancestors", action="store_true")
-    ask_parser.add_argument("--routing-model", default=ModelConfig().routing_model)
-    ask_parser.add_argument("--answer-model", default=ModelConfig().answer_model)
+    ask_parser.add_argument("--routing-model")
+    ask_parser.add_argument("--answer-model")
 
     repl_parser = subparsers.add_parser(
         "repl",
         help="Start an interactive question loop for a saved index.",
     )
     repl_parser.add_argument("index_path")
+    _add_provider_argument(repl_parser)
     repl_parser.add_argument("--sibling-window", type=int, default=1)
     repl_parser.add_argument("--exclude-ancestors", action="store_true")
-    repl_parser.add_argument("--routing-model", default=ModelConfig().routing_model)
-    repl_parser.add_argument("--answer-model", default=ModelConfig().answer_model)
+    repl_parser.add_argument("--routing-model")
+    repl_parser.add_argument("--answer-model")
 
     inspect_parser = subparsers.add_parser("inspect", help="Print index metadata.")
     inspect_parser.add_argument("index_path")
@@ -56,18 +68,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     corpus_index_parser.add_argument("output_path")
     corpus_index_parser.add_argument("input_paths", nargs="+")
+    _add_provider_argument(corpus_index_parser)
     corpus_index_parser.add_argument("--subsection-threshold", type=int, default=300)
     corpus_index_parser.add_argument("--max-depth", type=int, default=4)
     corpus_index_parser.add_argument("--cache-dir", default=".cache/treerag")
     corpus_index_parser.add_argument("--disable-cache", action="store_true")
-    corpus_index_parser.add_argument(
-        "--segmentation-model",
-        default=ModelConfig().segmentation_model,
-    )
-    corpus_index_parser.add_argument(
-        "--summarization-model",
-        default=ModelConfig().summarization_model,
-    )
+    corpus_index_parser.add_argument("--segmentation-model")
+    corpus_index_parser.add_argument("--summarization-model")
 
     corpus_ask_parser = subparsers.add_parser(
         "corpus-ask",
@@ -75,20 +82,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     corpus_ask_parser.add_argument("corpus_path")
     corpus_ask_parser.add_argument("question")
+    _add_provider_argument(corpus_ask_parser)
     corpus_ask_parser.add_argument("--sibling-window", type=int, default=1)
     corpus_ask_parser.add_argument("--exclude-ancestors", action="store_true")
-    corpus_ask_parser.add_argument("--routing-model", default=ModelConfig().routing_model)
-    corpus_ask_parser.add_argument("--answer-model", default=ModelConfig().answer_model)
+    corpus_ask_parser.add_argument("--routing-model")
+    corpus_ask_parser.add_argument("--answer-model")
 
     corpus_repl_parser = subparsers.add_parser(
         "corpus-repl",
         help="Start an interactive question loop for a saved corpus manifest.",
     )
     corpus_repl_parser.add_argument("corpus_path")
+    _add_provider_argument(corpus_repl_parser)
     corpus_repl_parser.add_argument("--sibling-window", type=int, default=1)
     corpus_repl_parser.add_argument("--exclude-ancestors", action="store_true")
-    corpus_repl_parser.add_argument("--routing-model", default=ModelConfig().routing_model)
-    corpus_repl_parser.add_argument("--answer-model", default=ModelConfig().answer_model)
+    corpus_repl_parser.add_argument("--routing-model")
+    corpus_repl_parser.add_argument("--answer-model")
 
     corpus_inspect_parser = subparsers.add_parser(
         "corpus-inspect",
@@ -102,6 +111,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     benchmark_parser.add_argument("input_path")
     benchmark_parser.add_argument("cases_path")
+    _add_provider_argument(benchmark_parser)
     benchmark_parser.add_argument(
         "--index-path",
         default=".cache/treerag/benchmark.index.json",
@@ -112,13 +122,10 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_parser.add_argument("--disable-cache", action="store_true")
     benchmark_parser.add_argument("--sibling-window", type=int, default=1)
     benchmark_parser.add_argument("--exclude-ancestors", action="store_true")
-    benchmark_parser.add_argument("--segmentation-model", default=ModelConfig().segmentation_model)
-    benchmark_parser.add_argument(
-        "--summarization-model",
-        default=ModelConfig().summarization_model,
-    )
-    benchmark_parser.add_argument("--routing-model", default=ModelConfig().routing_model)
-    benchmark_parser.add_argument("--answer-model", default=ModelConfig().answer_model)
+    benchmark_parser.add_argument("--segmentation-model")
+    benchmark_parser.add_argument("--summarization-model")
+    benchmark_parser.add_argument("--routing-model")
+    benchmark_parser.add_argument("--answer-model")
 
     corpus_benchmark_parser = subparsers.add_parser(
         "corpus-benchmark",
@@ -127,22 +134,17 @@ def build_parser() -> argparse.ArgumentParser:
     corpus_benchmark_parser.add_argument("corpus_path")
     corpus_benchmark_parser.add_argument("cases_path")
     corpus_benchmark_parser.add_argument("input_paths", nargs="+")
+    _add_provider_argument(corpus_benchmark_parser)
     corpus_benchmark_parser.add_argument("--subsection-threshold", type=int, default=300)
     corpus_benchmark_parser.add_argument("--max-depth", type=int, default=4)
     corpus_benchmark_parser.add_argument("--cache-dir", default=".cache/treerag")
     corpus_benchmark_parser.add_argument("--disable-cache", action="store_true")
     corpus_benchmark_parser.add_argument("--sibling-window", type=int, default=1)
     corpus_benchmark_parser.add_argument("--exclude-ancestors", action="store_true")
-    corpus_benchmark_parser.add_argument(
-        "--segmentation-model",
-        default=ModelConfig().segmentation_model,
-    )
-    corpus_benchmark_parser.add_argument(
-        "--summarization-model",
-        default=ModelConfig().summarization_model,
-    )
-    corpus_benchmark_parser.add_argument("--routing-model", default=ModelConfig().routing_model)
-    corpus_benchmark_parser.add_argument("--answer-model", default=ModelConfig().answer_model)
+    corpus_benchmark_parser.add_argument("--segmentation-model")
+    corpus_benchmark_parser.add_argument("--summarization-model")
+    corpus_benchmark_parser.add_argument("--routing-model")
+    corpus_benchmark_parser.add_argument("--answer-model")
 
     return parser
 
@@ -158,16 +160,13 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
             cache_dir=Path(args.cache_dir),
             use_cache=not args.disable_cache,
         )
-        model_config = ModelConfig(
-            segmentation_model=args.segmentation_model,
-            summarization_model=args.summarization_model,
-        )
+        model_config = _index_model_config_from_args(args)
         document_index = build_index(
             args.input_path,
             args.output_path,
             index_config,
             model_config=model_config,
-            provider=provider,
+            provider=_provider_from_args(args, provider),
         )
         print(
             json.dumps(
@@ -189,7 +188,7 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
             args.index_path,
             retrieval_config,
             model_config=model_config,
-            provider=provider,
+            provider=_provider_from_args(args, provider),
         )
         print(json.dumps(_index_query_output(result), indent=2))
         return 0
@@ -204,7 +203,7 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
                     args.index_path,
                     retrieval_config,
                     model_config=model_config,
-                    provider=provider,
+                    provider=_provider_from_args(args, provider),
                 )
             )
         )
@@ -232,16 +231,13 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
             cache_dir=Path(args.cache_dir),
             use_cache=not args.disable_cache,
         )
-        model_config = ModelConfig(
-            segmentation_model=args.segmentation_model,
-            summarization_model=args.summarization_model,
-        )
+        model_config = _index_model_config_from_args(args)
         corpus_index = build_corpus(
             args.input_paths,
             args.output_path,
             index_config,
             model_config=model_config,
-            provider=provider,
+            provider=_provider_from_args(args, provider),
         )
         print(
             json.dumps(
@@ -265,7 +261,7 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
             args.corpus_path,
             retrieval_config,
             model_config=model_config,
-            provider=provider,
+            provider=_provider_from_args(args, provider),
         )
         print(json.dumps(_corpus_query_output(corpus_result), indent=2))
         return 0
@@ -280,7 +276,7 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
                     args.corpus_path,
                     retrieval_config,
                     model_config=model_config,
-                    provider=provider,
+                    provider=_provider_from_args(args, provider),
                 )
             )
         )
@@ -310,12 +306,7 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
             sibling_window=args.sibling_window,
             include_ancestor_summaries=not args.exclude_ancestors,
         )
-        model_config = ModelConfig(
-            segmentation_model=args.segmentation_model,
-            summarization_model=args.summarization_model,
-            routing_model=args.routing_model,
-            answer_model=args.answer_model,
-        )
+        model_config = _full_model_config_from_args(args)
         report = run_benchmark(
             args.input_path,
             args.cases_path,
@@ -323,7 +314,7 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
             index_config,
             retrieval_config,
             model_config=model_config,
-            provider=provider,
+            provider=_provider_from_args(args, provider),
         )
         print(json.dumps(report.to_dict(), indent=2))
         return 0
@@ -339,12 +330,7 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
             sibling_window=args.sibling_window,
             include_ancestor_summaries=not args.exclude_ancestors,
         )
-        model_config = ModelConfig(
-            segmentation_model=args.segmentation_model,
-            summarization_model=args.summarization_model,
-            routing_model=args.routing_model,
-            answer_model=args.answer_model,
-        )
+        model_config = _full_model_config_from_args(args)
         report = run_corpus_benchmark(
             args.input_paths,
             args.cases_path,
@@ -352,7 +338,7 @@ def main(argv: Sequence[str] | None = None, *, provider: LLMProvider | None = No
             index_config,
             retrieval_config,
             model_config=model_config,
-            provider=provider,
+            provider=_provider_from_args(args, provider),
         )
         print(json.dumps(report.to_dict(), indent=2))
         return 0
@@ -368,10 +354,51 @@ def _retrieval_config_from_args(args: argparse.Namespace) -> RetrievalConfig:
     )
 
 
-def _query_model_config_from_args(args: argparse.Namespace) -> ModelConfig:
+def _provider_from_args(
+    args: argparse.Namespace, provider: LLMProvider | None
+) -> LLMProvider:
+    if provider is not None:
+        return provider
+    return create_provider(args.provider)
+
+
+def _add_provider_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--provider",
+        choices=[OPENAI_PROVIDER_NAME, GEMINI_PROVIDER_NAME],
+        default=OPENAI_PROVIDER_NAME,
+    )
+
+
+def _provider_model_defaults(provider_name: str) -> ModelConfig:
+    if provider_name == GEMINI_PROVIDER_NAME:
+        return GEMINI_DEFAULT_MODELS
+    return ModelConfig()
+
+
+def _index_model_config_from_args(args: argparse.Namespace) -> ModelConfig:
+    defaults = _provider_model_defaults(args.provider)
     return ModelConfig(
-        routing_model=args.routing_model,
-        answer_model=args.answer_model,
+        segmentation_model=args.segmentation_model or defaults.segmentation_model,
+        summarization_model=args.summarization_model or defaults.summarization_model,
+    )
+
+
+def _query_model_config_from_args(args: argparse.Namespace) -> ModelConfig:
+    defaults = _provider_model_defaults(args.provider)
+    return ModelConfig(
+        routing_model=args.routing_model or defaults.routing_model,
+        answer_model=args.answer_model or defaults.answer_model,
+    )
+
+
+def _full_model_config_from_args(args: argparse.Namespace) -> ModelConfig:
+    defaults = _provider_model_defaults(args.provider)
+    return ModelConfig(
+        segmentation_model=args.segmentation_model or defaults.segmentation_model,
+        summarization_model=args.summarization_model or defaults.summarization_model,
+        routing_model=args.routing_model or defaults.routing_model,
+        answer_model=args.answer_model or defaults.answer_model,
     )
 
 

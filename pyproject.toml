@@ -39,6 +39,9 @@ dev = [
   "ruff>=0.15.8,<0.16",
   "twine>=6.2.0,<7",
 ]
+gemini = [
+  "google-genai>=1.66.0,<2; python_version >= '3.10'",
+]
 
 [project.scripts]
 treerag = "treerag.cli:main"

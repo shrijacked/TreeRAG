@@ -299,6 +299,44 @@ def test_cli_index_ask_and_inspect_commands(
     assert inspect_output["child_count"] == 1
 
 
+def test_cli_can_build_with_gemini_provider_selection(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document_path = _write_document(tmp_path)
+    index_path = tmp_path / "jira.index.json"
+    provider_calls: list[str] = []
+
+    def fake_create_provider(name: str) -> FakeProvider:
+        provider_calls.append(name)
+        return FakeProvider(
+            segment_responses=[[Section(title="Incident Management", content="leaf content")]],
+            summary_responses=[
+                "Incident management is captured in a single section.",
+                "The runbook explains incident response.",
+            ],
+        )
+
+    monkeypatch.setattr("treerag.cli.create_provider", fake_create_provider)
+
+    assert main(
+        [
+            "index",
+            str(document_path),
+            str(index_path),
+            "--cache-dir",
+            str(tmp_path / ".cache"),
+            "--provider",
+            "gemini",
+        ]
+    ) == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["output_path"] == str(index_path)
+    assert provider_calls == ["gemini"]
+
+
 def test_cli_ask_outputs_source_references(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

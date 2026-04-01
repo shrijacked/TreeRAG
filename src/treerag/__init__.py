@@ -18,6 +18,7 @@ from treerag.corpus import (
     query_corpus,
 )
 from treerag.models import DocumentIndex, PageNode, QueryResult, SourceReference, SourceSpan
+from treerag.provider import GeminiProvider, OpenAIProvider, create_provider
 
 __all__ = [
     "__version__",
@@ -35,8 +36,11 @@ __all__ = [
     "RetrievalConfig",
     "SourceReference",
     "SourceSpan",
+    "GeminiProvider",
+    "OpenAIProvider",
     "build_index",
     "build_corpus",
+    "create_provider",
     "load_corpus",
     "query_index",
     "query_corpus",

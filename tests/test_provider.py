@@ -6,8 +6,8 @@ from typing import Any
 import pytest
 
 from treerag.config import ModelConfig
-from treerag.errors import ParseError, RoutingError
-from treerag.provider import OpenAIProvider, RouteChoice
+from treerag.errors import ParseError, ProviderError, RoutingError
+from treerag.provider import GeminiProvider, OpenAIProvider, RouteChoice, create_provider
 
 
 def _fake_client(content: str, capture: list[dict[str, Any]] | None = None) -> SimpleNamespace:
@@ -21,6 +21,18 @@ def _fake_client(content: str, capture: list[dict[str, Any]] | None = None) -> S
     completions = SimpleNamespace(create=create)
     chat = SimpleNamespace(completions=completions)
     return SimpleNamespace(chat=chat)
+
+
+def _fake_gemini_client(
+    content: str, capture: list[dict[str, Any]] | None = None
+) -> SimpleNamespace:
+    def generate_content(**kwargs: Any) -> SimpleNamespace:
+        if capture is not None:
+            capture.append(kwargs)
+        return SimpleNamespace(text=content)
+
+    models = SimpleNamespace(generate_content=generate_content)
+    return SimpleNamespace(models=models)
 
 
 def test_segment_raises_parse_error_on_invalid_json() -> None:
@@ -51,3 +63,34 @@ def test_provider_uses_consistent_completion_token_parameter() -> None:
 
     assert capture[0]["max_completion_tokens"] == 111
     assert "max_tokens" not in capture[0]
+
+
+def test_gemini_segment_raises_parse_error_on_invalid_json() -> None:
+    provider = GeminiProvider(client=_fake_gemini_client("{bad json"))
+
+    with pytest.raises(ParseError):
+        provider.segment("text", model_config=ModelConfig(), char_limit=8000)
+
+
+def test_gemini_provider_uses_json_response_config() -> None:
+    capture: list[dict[str, Any]] = []
+    provider = GeminiProvider(client=_fake_gemini_client('{"sections": []}', capture))
+    model_config = ModelConfig(segmentation_max_completion_tokens=111)
+
+    provider.segment("text", model_config=model_config, char_limit=8000)
+
+    assert capture[0]["model"] == model_config.segmentation_model
+    assert capture[0]["config"]["max_output_tokens"] == 111
+    assert capture[0]["config"]["response_mime_type"] == "application/json"
+    assert capture[0]["config"]["response_json_schema"]["type"] == "object"
+
+
+def test_create_provider_supports_gemini() -> None:
+    provider = create_provider("gemini", client=_fake_gemini_client("hello"))
+
+    assert isinstance(provider, GeminiProvider)
+
+
+def test_create_provider_rejects_unknown_name() -> None:
+    with pytest.raises(ProviderError):
+        create_provider("mystery")
