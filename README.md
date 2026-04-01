@@ -45,6 +45,7 @@ flowchart LR
 - Benchmark APIs: `run_benchmark(...)`, `run_comparison_benchmark(...)`, `run_corpus_benchmark(...)`, and `run_corpus_comparison_benchmark(...)`
 - CLI commands: `treerag index`, `treerag ask`, `treerag repl`, `treerag inspect`, `treerag corpus-index`, `treerag corpus-ask`, `treerag corpus-repl`, `treerag corpus-inspect`, `treerag benchmark`, `treerag compare`, `treerag corpus-benchmark`, `treerag corpus-compare`
 - Provider selection through `--provider openai|gemini`
+- Usage and cost estimates in benchmark JSON output
 - Recursive parsing beyond depth two
 - File-backed caches for segmentation and summaries
 - Explicit routing errors instead of silent branch fallback
@@ -380,6 +381,20 @@ treerag compare examples/noisy_finance_report.md benchmarks/comparison_cases.jso
 That gives you a concrete way to test whether TreeRAG is actually adding value at the document-selection layer, instead of only winning after the right document has already been chosen.
 
 `--repeat` works here too, and the JSON output now includes `total_runs`, `query_samples_ms`, and simple consistency flags for document choice, leaf choice, and answer text.
+
+Benchmark outputs now also include usage snapshots plus `build_cost_estimate`, `query_cost_estimate`, and `total_cost_estimate` when the provider exposes token usage.
+
+Built-in price estimates currently cover:
+
+- `gpt-5.4`
+- `gpt-5.4-mini`
+- `gemini-2.5-flash`
+- `gemini-2.5-pro`
+- `gemini-2.5-flash-lite`
+
+These estimates are based on the public provider pricing pages as of 2026-04-02.
+
+If you benchmark with another model, the JSON will still include token usage and will mark pricing as incomplete under `missing_models`.
 
 The broader validation path is tracked in [`docs/validation-roadmap.md`](/Users/owlxshri/Desktop/TreeRAG/docs/validation-roadmap.md).
 

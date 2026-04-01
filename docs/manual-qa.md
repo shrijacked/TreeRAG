@@ -187,6 +187,7 @@ treerag compare examples/noisy_finance_report.md benchmarks/comparison_cases.jso
   - comparison output includes `tree_rag`, `keyword_leaf`, and `full_context`
   - corpus comparison output includes `tree_rag`, `keyword_document`, and `full_context`
   - repeated comparison output includes `total_runs`, `query_samples_ms`, and consistency flags
+  - benchmark JSON includes usage snapshots and cost estimates when model pricing is known
 
 ## Interactive UX
 

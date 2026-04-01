@@ -21,6 +21,7 @@ flowchart LR
 - Side-by-side comparison against simpler baselines via `treerag compare`
 - Corpus-level side-by-side comparison against simpler document-selection baselines via `treerag corpus-compare`
 - Repeated-run timing and consistency sampling via `--repeat` on comparison commands
+- Token usage and cost estimates in benchmark output for supported models
 - Appendix-heavy and noisy-document fixtures that stress low-overlap retrieval
 
 ## Next Proof Milestones
@@ -39,7 +40,7 @@ flowchart TD
 - Phase 3:
   run repeated samples per case and store latency spread instead of one-off timings
 - Phase 4:
-  capture provider token usage when available so benchmark output includes cost signals
+  broaden pricing coverage and provider-side usage support so more models produce complete cost estimates
 
 ## Current Entry Points
 
