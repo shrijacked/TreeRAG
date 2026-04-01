@@ -42,8 +42,8 @@ flowchart LR
 
 - Typed public API: `build_index(...)` and `query_index(...)`
 - Typed corpus API: `build_corpus(...)`, `load_corpus(...)`, and `query_corpus(...)`
-- Benchmark APIs: `run_benchmark(...)`, `run_comparison_benchmark(...)`, and `run_corpus_benchmark(...)`
-- CLI commands: `treerag index`, `treerag ask`, `treerag repl`, `treerag inspect`, `treerag corpus-index`, `treerag corpus-ask`, `treerag corpus-repl`, `treerag corpus-inspect`, `treerag benchmark`, `treerag compare`, `treerag corpus-benchmark`
+- Benchmark APIs: `run_benchmark(...)`, `run_comparison_benchmark(...)`, `run_corpus_benchmark(...)`, and `run_corpus_comparison_benchmark(...)`
+- CLI commands: `treerag index`, `treerag ask`, `treerag repl`, `treerag inspect`, `treerag corpus-index`, `treerag corpus-ask`, `treerag corpus-repl`, `treerag corpus-inspect`, `treerag benchmark`, `treerag compare`, `treerag corpus-benchmark`, `treerag corpus-compare`
 - Provider selection through `--provider openai|gemini`
 - Recursive parsing beyond depth two
 - File-backed caches for segmentation and summaries
@@ -228,6 +228,16 @@ treerag corpus-benchmark build/runbooks \
   --cache-dir .cache/treerag
 ```
 
+Run a side-by-side corpus comparison against simpler baselines:
+
+```bash
+treerag corpus-compare build/ops-compare \
+  benchmarks/corpus_comparison_cases.json \
+  examples/critical_outage_updates.md \
+  examples/oncall_handbook_compare.md \
+  --cache-dir .cache/treerag
+```
+
 Run a side-by-side comparison against simpler baselines:
 
 ```bash
@@ -329,6 +339,7 @@ TreeRAG includes a lightweight benchmark harness for repeatable, question-based 
 - [`benchmarks/access_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/access_cases.json) covers access-control runbooks with approval and revocation flows
 - [`benchmarks/appendix_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/appendix_cases.json) probes appendix-heavy and low-overlap questions against a finance-style report in [`examples/finance_appendix_report.md`](/Users/owlxshri/Desktop/TreeRAG/examples/finance_appendix_report.md)
 - [`benchmarks/comparison_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/comparison_cases.json) drives side-by-side comparisons on a noisy finance report in [`examples/noisy_finance_report.md`](/Users/owlxshri/Desktop/TreeRAG/examples/noisy_finance_report.md)
+- [`benchmarks/corpus_comparison_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/corpus_comparison_cases.json) drives corpus-level comparisons on [`examples/critical_outage_updates.md`](/Users/owlxshri/Desktop/TreeRAG/examples/critical_outage_updates.md) and [`examples/oncall_handbook_compare.md`](/Users/owlxshri/Desktop/TreeRAG/examples/oncall_handbook_compare.md)
 - [`benchmarks/paraphrase_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/paraphrase_cases.json) probes synonym and paraphrase-style questions against the same document structure
 - [`benchmarks/runbook_corpus_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/runbook_corpus_cases.json) exercises corpus routing across multiple runbooks
 - [`benchmarks/operations_corpus_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/operations_corpus_cases.json) expands corpus evals across incident, on-call, and access runbooks
@@ -350,6 +361,14 @@ That fixture is meant to pressure-test the exact retrieval story people usually 
 - `full_context`: a no-retrieval baseline that dumps the whole document into the answer step
 
 That gives you a concrete way to measure whether TreeRAG is actually helping on the same document and question set, instead of only reporting a single-method accuracy number.
+
+`treerag corpus-compare` does the same thing at the multi-document layer. It runs:
+
+- `tree_rag`: normal corpus routing plus normal tree retrieval inside the selected document
+- `keyword_document`: a simple lexical document pick followed by normal tree retrieval inside that document
+- `full_context`: a no-routing baseline that dumps the whole corpus into the answer step
+
+That gives you a concrete way to test whether TreeRAG is actually adding value at the document-selection layer, instead of only winning after the right document has already been chosen.
 
 The broader validation path is tracked in [`docs/validation-roadmap.md`](/Users/owlxshri/Desktop/TreeRAG/docs/validation-roadmap.md).
 

@@ -1,15 +1,15 @@
 # Validation Roadmap
 
-TreeRAG now has a side-by-side comparison benchmark so we can measure whether hierarchical retrieval is actually helping on the same document and question set.
+TreeRAG now has side-by-side comparison benchmarks for both single-document and corpus-level retrieval, so we can measure whether hierarchical routing is actually helping instead of just asserting that it should.
 
 ## Evidence Flow
 
 ```mermaid
 flowchart LR
-    A["Document Fixture"] --> B["Benchmark Cases"]
+    A["Fixtures"] --> B["Benchmark Cases"]
     B --> C["TreeRAG"]
-    B --> D["Keyword Leaf Baseline"]
-    B --> E["Full Context Baseline"]
+    B --> D["Keyword Baselines"]
+    B --> E["Full Context Baselines"]
     C --> F["Accuracy + Latency Report"]
     D --> F
     E --> F
@@ -19,6 +19,7 @@ flowchart LR
 
 - Accuracy on packaged single-document evals with expected leaf titles and answer substrings
 - Side-by-side comparison against simpler baselines via `treerag compare`
+- Corpus-level side-by-side comparison against simpler document-selection baselines via `treerag corpus-compare`
 - Appendix-heavy and noisy-document fixtures that stress low-overlap retrieval
 
 ## Next Proof Milestones
@@ -33,7 +34,7 @@ flowchart TD
 - Phase 1:
   compare `tree_rag`, `keyword_leaf`, and `full_context` on hard single-document cases
 - Phase 2:
-  add corpus-level baselines so we can measure routing quality across multiple runbooks
+  compare `tree_rag`, `keyword_document`, and `full_context` across multiple documents
 - Phase 3:
   run repeated samples per case and store latency spread instead of one-off timings
 - Phase 4:
@@ -45,7 +46,9 @@ flowchart TD
   `treerag benchmark ...`
   `treerag compare ...`
   `treerag corpus-benchmark ...`
+  `treerag corpus-compare ...`
 - Fixtures:
   [`benchmarks/comparison_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/comparison_cases.json)
+  [`benchmarks/corpus_comparison_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/corpus_comparison_cases.json)
   [`benchmarks/appendix_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/appendix_cases.json)
   [`benchmarks/operations_corpus_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/operations_corpus_cases.json)

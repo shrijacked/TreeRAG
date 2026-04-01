@@ -162,10 +162,21 @@ treerag corpus-benchmark build/runbooks \
   --cache-dir .cache/treerag
 ```
 
+- Run the corpus comparison benchmark:
+
+```bash
+treerag corpus-compare build/ops-compare \
+  benchmarks/corpus_comparison_cases.json \
+  examples/critical_outage_updates.md \
+  examples/oncall_handbook_compare.md \
+  --cache-dir .cache/treerag
+```
+
 - Expected result:
   - `passed_count` equals `case_count`
   - appendix cases route to `Appendix G - Debt Schedule` or `Appendix H - Covenant Notes`
   - comparison output includes `tree_rag`, `keyword_leaf`, and `full_context`
+  - corpus comparison output includes `tree_rag`, `keyword_document`, and `full_context`
 
 ## Interactive UX
 
