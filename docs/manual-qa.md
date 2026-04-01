@@ -116,6 +116,14 @@ treerag benchmark examples/jira_runbook.md benchmarks/paraphrase_cases.json \
   --cache-dir .cache/treerag
 ```
 
+- Run the appendix-style benchmark:
+
+```bash
+treerag benchmark examples/finance_appendix_report.md benchmarks/appendix_cases.json \
+  --index-path .cache/treerag/finance-appendix.index.json \
+  --cache-dir .cache/treerag
+```
+
 - Run the corpus benchmark:
 
 ```bash
@@ -129,6 +137,7 @@ treerag corpus-benchmark build/runbooks \
 
 - Expected result:
   - `passed_count` equals `case_count`
+  - appendix cases route to `Appendix G - Debt Schedule` or `Appendix H - Covenant Notes`
 
 ## Interactive UX
 

@@ -272,9 +272,20 @@ TreeRAG includes a lightweight benchmark harness for repeatable, question-based 
 - `treerag benchmark` measures index build time, total query time, and per-case results
 - [`benchmarks/jira_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/jira_cases.json) gives the repo a concrete Jira-style benchmark target
 - [`benchmarks/access_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/access_cases.json) covers access-control runbooks with approval and revocation flows
+- [`benchmarks/appendix_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/appendix_cases.json) probes appendix-heavy and low-overlap questions against a finance-style report in [`examples/finance_appendix_report.md`](/Users/owlxshri/Desktop/TreeRAG/examples/finance_appendix_report.md)
 - [`benchmarks/paraphrase_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/paraphrase_cases.json) probes synonym and paraphrase-style questions against the same document structure
 - [`benchmarks/runbook_corpus_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/runbook_corpus_cases.json) exercises corpus routing across multiple runbooks
 - [`benchmarks/operations_corpus_cases.json`](/Users/owlxshri/Desktop/TreeRAG/benchmarks/operations_corpus_cases.json) expands corpus evals across incident, on-call, and access runbooks
+
+You can run the appendix-style eval locally with:
+
+```bash
+treerag benchmark examples/finance_appendix_report.md benchmarks/appendix_cases.json \
+  --index-path .cache/treerag/finance-appendix.index.json \
+  --cache-dir .cache/treerag
+```
+
+That fixture is meant to pressure-test the exact retrieval story people usually bring up in finance and regulatory documents: the answer living in an appendix or supporting section that is structurally relevant even when the question wording does not closely mirror the target section text.
 
 ## Corpus Layout
 
