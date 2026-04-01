@@ -143,6 +143,14 @@ treerag benchmark examples/finance_appendix_report.md benchmarks/appendix_cases.
   --cache-dir .cache/treerag
 ```
 
+- Run the comparison benchmark:
+
+```bash
+treerag compare examples/noisy_finance_report.md benchmarks/comparison_cases.json \
+  --index-path .cache/treerag/noisy-finance.compare.index.json \
+  --cache-dir .cache/treerag
+```
+
 - Run the corpus benchmark:
 
 ```bash
@@ -157,6 +165,7 @@ treerag corpus-benchmark build/runbooks \
 - Expected result:
   - `passed_count` equals `case_count`
   - appendix cases route to `Appendix G - Debt Schedule` or `Appendix H - Covenant Notes`
+  - comparison output includes `tree_rag`, `keyword_leaf`, and `full_context`
 
 ## Interactive UX
 
