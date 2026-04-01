@@ -22,6 +22,7 @@ flowchart LR
 - Corpus-level side-by-side comparison against simpler document-selection baselines via `treerag corpus-compare`
 - Repeated-run timing and consistency sampling via `--repeat` on comparison commands
 - Token usage and cost estimates in benchmark output for supported models
+- Alias-aware pricing resolution for common dated and preview model names
 - Appendix-heavy and noisy-document fixtures that stress low-overlap retrieval
 
 ## Next Proof Milestones

@@ -388,11 +388,14 @@ Built-in price estimates currently cover:
 
 - `gpt-5.4`
 - `gpt-5.4-mini`
+- `gpt-5.4-nano`
 - `gemini-2.5-flash`
 - `gemini-2.5-pro`
 - `gemini-2.5-flash-lite`
 
 These estimates are based on the public provider pricing pages as of 2026-04-02.
+
+TreeRAG also recognizes common dated and preview aliases such as `gpt-5.4-mini-2026-03-17`, `gpt-5.4-nano-2026-03-17`, `gemini-2.5-flash-002`, and `gemini-2.5-flash-lite-preview-09-2025`.
 
 If you benchmark with another model, the JSON will still include token usage and will mark pricing as incomplete under `missing_models`.
 
