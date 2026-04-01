@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/python-3.9%2B-3776AB.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-2ea44f.svg)](https://github.com/shrijacked/TreeRAG/blob/main/LICENSE)
 
-TreeRAG is an embedding-free hierarchical retrieval system for runbook-style knowledge bases. It packages recursive tree building, cache-aware indexing, sibling-context retrieval, multi-document corpus routing, and a typed CLI/API into a production-ready Python project.
+TreeRAG is an embedding-free hierarchical retrieval system for runbook-style knowledge bases. It packages recursive tree building, cache-aware indexing, sibling-context retrieval, source-traceable answers, multi-document corpus routing, and a typed CLI/API into a production-ready Python project.
 
 ## What "Embedding-Free" Means Here
 
@@ -43,6 +43,7 @@ flowchart LR
 - File-backed caches for segmentation and summaries
 - Explicit routing errors instead of silent branch fallback
 - Context assembly that can include nearby sibling leaves and ancestor summaries
+- Line-aware source references for retrieved sections in markdown and text inputs
 - Corpus manifests that route questions across multiple indexed documents before leaf selection
 - UTF-8 JSON index storage with metadata and parent-link restoration
 - Jira-style runbook example in [`examples/jira_runbook.md`](/Users/owlxshri/Desktop/TreeRAG/examples/jira_runbook.md)
@@ -72,7 +73,29 @@ Example response:
 ```json
 {
   "answer": "Page the primary on-call immediately and escalate after five minutes.",
+  "source_path": "examples/jira_runbook.md",
   "selected_leaf_title": "Escalation Policy",
+  "selected_source_span": {
+    "start_line": 7,
+    "end_line": 9
+  },
+  "source_references": [
+    {
+      "title": "Severity Levels",
+      "start_line": 3,
+      "end_line": 5
+    },
+    {
+      "title": "Escalation Policy",
+      "start_line": 7,
+      "end_line": 9
+    },
+    {
+      "title": "Notification Rules",
+      "start_line": 11,
+      "end_line": 13
+    }
+  ],
   "navigation_path": [
     "root",
     "Incident Management",
@@ -211,6 +234,7 @@ result = query_index(
 
 print(result.answer)
 print(result.context)
+print(result.source_references)
 ```
 
 ## Good Fits
@@ -218,6 +242,7 @@ print(result.context)
 Yes, when the document set is structured and the answer usually lives in one operational subsection. The Jira runbook example is a good fit because:
 
 - headings naturally map to sections
+- the answer can be traced back to concrete section lines instead of opaque retrieval scores
 - neighboring subsections provide useful context
 - the runbooks are small enough that hierarchical routing is cheaper than loading everything every time
 

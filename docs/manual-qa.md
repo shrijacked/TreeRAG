@@ -43,6 +43,8 @@ treerag ask build/jira.index.json "how do sev-1 escalations work?" \
   - JSON output
   - `selected_leaf_title` is `Escalation Policy`
   - answer mentions the primary on-call and escalation timing
+  - `source_path` points at the runbook you indexed
+  - `selected_source_span` and `source_references` point to the escalation section and nearby sibling sections
 
 - Inspect the index:
 
@@ -73,6 +75,7 @@ treerag corpus-ask build/runbooks \
 - Expected result:
   - `document_title` is `On-Call Handbook`
   - `selected_leaf_title` is `Incident Command`
+  - `source_references` cite the selected handbook section by line range
 
 - Inspect the corpus:
 
@@ -93,6 +96,7 @@ treerag ask build/jira.index.json \
 - Expected result:
   - still routes to `Escalation Policy`
   - answer still mentions the primary on-call
+  - trace output still cites the escalation section lines instead of a different branch
 
 ## Benchmarks
 
