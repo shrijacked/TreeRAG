@@ -378,9 +378,14 @@ def _query_model_config_from_args(args: argparse.Namespace) -> ModelConfig:
 def _index_query_output(result: Any) -> dict[str, Any]:
     return {
         "answer": result.answer,
+        "source_path": result.source_path,
         "selected_leaf_title": result.selected_leaf_title,
+        "selected_source_span": _span_output(result.selected_source_span),
         "navigation_path": result.navigation_path,
         "included_sections": result.included_sections,
+        "source_references": [
+            _reference_output(reference) for reference in result.source_references
+        ],
     }
 
 
@@ -388,9 +393,14 @@ def _corpus_query_output(result: Any) -> dict[str, Any]:
     return {
         "document_id": result.document_id,
         "document_title": result.document_title,
+        "source_path": result.source_path,
         "selected_leaf_title": result.selected_leaf_title,
+        "selected_source_span": _span_output(result.selected_source_span),
         "navigation_path": result.navigation_path,
         "included_sections": result.included_sections,
+        "source_references": [
+            _reference_output(reference) for reference in result.source_references
+        ],
         "answer": result.answer,
     }
 
@@ -412,3 +422,22 @@ def _interactive_query_loop(render_query: Callable[[str], dict[str, Any]]) -> in
             return 0
 
         print(json.dumps(render_query(question), indent=2))
+
+
+def _span_output(span: Any) -> dict[str, int] | None:
+    if span is None:
+        return None
+    return {
+        "start_char": span.start_char,
+        "end_char": span.end_char,
+        "start_line": span.start_line,
+        "end_line": span.end_line,
+    }
+
+
+def _reference_output(reference: Any) -> dict[str, int | str]:
+    return {
+        "title": reference.title,
+        "start_line": reference.start_line,
+        "end_line": reference.end_line,
+    }

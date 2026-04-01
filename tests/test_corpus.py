@@ -40,6 +40,30 @@ def _incident_section() -> Section:
     )
 
 
+def _write_traceable_corpus_documents(tmp_path: Path) -> tuple[Path, Path]:
+    access_path = tmp_path / "access_requests_traceable.md"
+    access_path.write_text(
+        (
+            "# Access Requests\n\n"
+            "## Approvals\n"
+            "Grant access only after manager approval.\n"
+        ),
+        encoding="utf-8",
+    )
+    incidents_path = tmp_path / "incident_response_traceable.md"
+    incidents_path.write_text(
+        (
+            "# Incident Response\n\n"
+            "## Incident Command\n"
+            "Page the incident commander immediately.\n\n"
+            "## Comms\n"
+            "Notify the response channel after the page goes out.\n"
+        ),
+        encoding="utf-8",
+    )
+    return access_path, incidents_path
+
+
 def test_build_and_query_corpus_routes_to_the_right_document(tmp_path: Path) -> None:
     access_path, incidents_path = _write_documents(tmp_path)
     corpus_dir = tmp_path / "corpus"
@@ -78,6 +102,67 @@ def test_build_and_query_corpus_routes_to_the_right_document(tmp_path: Path) -> 
     assert result.document_title == "Incident Response"
     assert result.selected_leaf_title == "Incident Response"
     assert result.answer == "Page the incident commander immediately."
+
+
+def test_query_corpus_preserves_traceable_source_references(tmp_path: Path) -> None:
+    access_path, incidents_path = _write_traceable_corpus_documents(tmp_path)
+    corpus_dir = tmp_path / "traceable-corpus"
+    provider = FakeProvider(
+        segment_responses=[
+            [
+                Section(
+                    title="Approvals",
+                    content="Grant access only after manager approval.",
+                )
+            ],
+            [
+                Section(
+                    title="Incident Command",
+                    content="Page the incident commander immediately.",
+                ),
+                Section(
+                    title="Comms",
+                    content="Notify the response channel after the page goes out.",
+                ),
+            ],
+        ],
+        summary_responses=[
+            "Grant access only after manager approval.",
+            "Access requests are controlled through manager approval.",
+            "Page the incident commander immediately.",
+            "Notify the response channel after the page goes out.",
+            "Incident response explains command and communication flow.",
+        ],
+        route_responses=[1, 0],
+        answer_responses=["Page the incident commander immediately."],
+    )
+
+    build_corpus(
+        [access_path, incidents_path],
+        corpus_dir,
+        IndexConfig(cache_dir=tmp_path / ".cache"),
+        model_config=ModelConfig(),
+        provider=provider,
+    )
+    result = query_corpus(
+        "Who coordinates the response first?",
+        corpus_dir,
+        RetrievalConfig(sibling_window=1, include_ancestor_summaries=False),
+        model_config=ModelConfig(),
+        provider=provider,
+    )
+
+    assert result.source_path == str(incidents_path.resolve())
+    assert result.selected_source_span is not None
+    assert result.selected_source_span.start_line == 3
+    assert result.selected_source_span.end_line == 4
+    assert [
+        (reference.title, reference.start_line, reference.end_line)
+        for reference in result.source_references
+    ] == [
+        ("Incident Command", 3, 4),
+        ("Comms", 6, 7),
+    ]
 
 
 def test_load_corpus_accepts_directory_or_manifest_path(tmp_path: Path) -> None:

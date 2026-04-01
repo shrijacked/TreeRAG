@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from treerag.models import DocumentIndex, PageNode
+from treerag.models import DocumentIndex, PageNode, SourceSpan
 from treerag.storage import (
     MalformedIndexError,
     MissingIndexError,
@@ -21,6 +21,7 @@ def build_sample_index() -> DocumentIndex:
         content="",
         summary="document summary",
         depth=0,
+        source_span=SourceSpan(start_char=0, end_char=64, start_line=1, end_line=8),
     )
     parent = PageNode(
         node_id="root.0",
@@ -28,6 +29,7 @@ def build_sample_index() -> DocumentIndex:
         content="parent content",
         summary="parent summary",
         depth=1,
+        source_span=SourceSpan(start_char=10, end_char=40, start_line=2, end_line=5),
     )
     leaf_one = PageNode(
         node_id="root.0.0",
@@ -35,6 +37,7 @@ def build_sample_index() -> DocumentIndex:
         content="leaf one content",
         summary="leaf one summary",
         depth=2,
+        source_span=SourceSpan(start_char=10, end_char=24, start_line=3, end_line=3),
     )
     leaf_two = PageNode(
         node_id="root.0.1",
@@ -42,6 +45,7 @@ def build_sample_index() -> DocumentIndex:
         content="leaf two content",
         summary="leaf two summary",
         depth=2,
+        source_span=SourceSpan(start_char=26, end_char=40, start_line=5, end_line=5),
     )
     parent.set_children([leaf_one, leaf_two])
     root.set_children([parent])
@@ -74,6 +78,18 @@ def test_storage_round_trip_preserves_tree_and_metadata(tmp_path: Path) -> None:
     assert restored.root.children[0].children[1].title == "Leaf Two"
     assert restored.root.children[0].children[0].content == "leaf one content"
     assert restored.root.children[0].children[1].summary == "leaf two summary"
+    assert restored.root.source_span == SourceSpan(
+        start_char=0,
+        end_char=64,
+        start_line=1,
+        end_line=8,
+    )
+    assert restored.root.children[0].children[1].source_span == SourceSpan(
+        start_char=26,
+        end_char=40,
+        start_line=5,
+        end_line=5,
+    )
 
 
 def test_load_missing_index_raises_clear_error(tmp_path: Path) -> None:
@@ -104,7 +120,7 @@ def test_load_missing_index_raises_clear_error(tmp_path: Path) -> None:
                 '"root": {"node_id": "root", "title": "root", "content": "", '
                 '"summary": "", "depth": 0, "children": []}}'
             ),
-            "Unsupported index schema_version 99",
+            "Unsupported index schema_version 99; expected one of",
         ),
     ],
 )

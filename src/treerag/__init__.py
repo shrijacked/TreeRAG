@@ -17,7 +17,7 @@ from treerag.corpus import (
     load_corpus,
     query_corpus,
 )
-from treerag.models import DocumentIndex, PageNode, QueryResult
+from treerag.models import DocumentIndex, PageNode, QueryResult, SourceReference, SourceSpan
 
 __all__ = [
     "__version__",
@@ -33,6 +33,8 @@ __all__ = [
     "PageNode",
     "QueryResult",
     "RetrievalConfig",
+    "SourceReference",
+    "SourceSpan",
     "build_index",
     "build_corpus",
     "load_corpus",

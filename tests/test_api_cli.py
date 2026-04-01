@@ -26,6 +26,23 @@ def _write_document(tmp_path: Path) -> Path:
     return document_path
 
 
+def _write_traceable_document(tmp_path: Path) -> Path:
+    document_path = tmp_path / "traceable_runbook.md"
+    document_path.write_text(
+        (
+            "# Jira Incident Runbook\n\n"
+            "## Severity Levels\n"
+            "Update the status page within five minutes.\n\n"
+            "## Escalation Policy\n"
+            "Page the primary on-call immediately and escalate after five minutes.\n\n"
+            "## Notification Rules\n"
+            "Notify support leadership after engineering acknowledges the incident.\n"
+        ),
+        encoding="utf-8",
+    )
+    return document_path
+
+
 def _write_corpus_documents(tmp_path: Path) -> tuple[Path, Path]:
     access_path = tmp_path / "access_requests.md"
     access_path.write_text(
@@ -161,6 +178,73 @@ def test_paraphrased_query_still_routes_to_the_same_section(tmp_path: Path) -> N
     assert "primary on-call" in result.answer
 
 
+def test_query_index_returns_traceable_source_references(tmp_path: Path) -> None:
+    document_path = _write_traceable_document(tmp_path)
+    index_path = tmp_path / "traceable.index.json"
+    provider = FakeProvider(
+        segment_responses=[
+            [
+                Section(
+                    title="Severity Levels",
+                    content="Update the status page within five minutes.",
+                ),
+                Section(
+                    title="Escalation Policy",
+                    content=(
+                        "Page the primary on-call immediately and escalate "
+                        "after five minutes."
+                    ),
+                ),
+                Section(
+                    title="Notification Rules",
+                    content=(
+                        "Notify support leadership after engineering acknowledges "
+                        "the incident."
+                    ),
+                ),
+            ]
+        ],
+        summary_responses=[
+            "Status updates happen quickly for critical incidents.",
+            "Escalations start with the primary on-call and step up after five minutes.",
+            "Leadership notifications happen after engineering acknowledgment.",
+            "The runbook explains how to coordinate a Sev-1 incident.",
+        ],
+        route_responses=[1],
+        answer_responses=[
+            "Page the primary on-call immediately and escalate after five minutes."
+        ],
+    )
+
+    build_index(
+        document_path,
+        index_path,
+        IndexConfig(cache_dir=tmp_path / ".cache"),
+        model_config=ModelConfig(),
+        provider=provider,
+    )
+    result = query_index(
+        "How do Sev-1 escalations work?",
+        index_path,
+        RetrievalConfig(sibling_window=1, include_ancestor_summaries=False),
+        model_config=ModelConfig(),
+        provider=provider,
+    )
+
+    assert result.source_path == str(document_path)
+    assert result.selected_source_span is not None
+    assert result.selected_source_span.start_line == 6
+    assert result.selected_source_span.end_line == 7
+    assert [
+        (reference.title, reference.start_line, reference.end_line)
+        for reference in result.source_references
+    ] == [
+        ("Severity Levels", 3, 4),
+        ("Escalation Policy", 6, 7),
+        ("Notification Rules", 9, 10),
+    ]
+
+
 def test_query_index_raises_for_missing_index(tmp_path: Path) -> None:
     with pytest.raises(MissingIndexError):
         query_index(
@@ -213,6 +297,68 @@ def test_cli_index_ask_and_inspect_commands(
     assert main(["inspect", str(index_path)]) == 0
     inspect_output = json.loads(capsys.readouterr().out)
     assert inspect_output["child_count"] == 1
+
+
+def test_cli_ask_outputs_source_references(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    document_path = _write_traceable_document(tmp_path)
+    index_path = tmp_path / "traceable.index.json"
+    provider = FakeProvider(
+        segment_responses=[
+            [
+                Section(
+                    title="Severity Levels",
+                    content="Update the status page within five minutes.",
+                ),
+                Section(
+                    title="Escalation Policy",
+                    content=(
+                        "Page the primary on-call immediately and escalate "
+                        "after five minutes."
+                    ),
+                ),
+                Section(
+                    title="Notification Rules",
+                    content=(
+                        "Notify support leadership after engineering acknowledges "
+                        "the incident."
+                    ),
+                ),
+            ]
+        ],
+        summary_responses=[
+            "Status updates happen quickly for critical incidents.",
+            "Escalations start with the primary on-call and step up after five minutes.",
+            "Leadership notifications happen after engineering acknowledgment.",
+            "The runbook explains how to coordinate a Sev-1 incident.",
+        ],
+        route_responses=[1],
+        answer_responses=[
+            "Page the primary on-call immediately and escalate after five minutes."
+        ],
+    )
+
+    assert main(
+        ["index", str(document_path), str(index_path), "--cache-dir", str(tmp_path / ".cache")],
+        provider=provider,
+    ) == 0
+    capsys.readouterr()
+
+    assert main(
+        ["ask", str(index_path), "How do Sev-1 escalations work?", "--sibling-window", "1"],
+        provider=provider,
+    ) == 0
+    ask_output = json.loads(capsys.readouterr().out)
+
+    assert ask_output["source_path"] == str(document_path)
+    assert ask_output["selected_source_span"]["start_line"] == 6
+    assert ask_output["selected_source_span"]["end_line"] == 7
+    assert ask_output["source_references"] == [
+        {"title": "Severity Levels", "start_line": 3, "end_line": 4},
+        {"title": "Escalation Policy", "start_line": 6, "end_line": 7},
+        {"title": "Notification Rules", "start_line": 9, "end_line": 10},
+    ]
 
 
 def test_cli_repl_answers_until_quit(

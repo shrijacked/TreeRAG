@@ -14,6 +14,28 @@ class Section:
     content: str
 
 
+@dataclass(frozen=True)
+class SourceSpan:
+    """Absolute source offsets and human-friendly line numbers for a node."""
+
+    start_char: int
+    end_char: int
+    start_line: int
+    end_line: int
+
+
+@dataclass(frozen=True)
+class SourceReference:
+    """A traceable source citation for a retrieved node."""
+
+    node_id: str
+    title: str
+    start_char: int
+    end_char: int
+    start_line: int
+    end_line: int
+
+
 @dataclass
 class PageNode:
     """A single node in the document tree."""
@@ -23,6 +45,7 @@ class PageNode:
     content: str
     summary: str
     depth: int
+    source_span: SourceSpan | None = None
     children: list["PageNode"] = field(default_factory=list)
     parent: "PageNode | None" = field(default=None, repr=False, compare=False)
 
@@ -66,7 +89,10 @@ class QueryResult:
 
     answer: str
     context: str
+    source_path: str
     selected_leaf_id: str
     selected_leaf_title: str
+    selected_source_span: SourceSpan | None
     navigation_path: list[str]
     included_sections: list[str]
+    source_references: list[SourceReference]

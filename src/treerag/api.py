@@ -8,10 +8,10 @@ from pathlib import Path
 from treerag.cache import FileCache
 from treerag.config import IndexConfig, ModelConfig, RetrievalConfig
 from treerag.indexer import build_summaries
-from treerag.models import DocumentIndex, QueryResult
+from treerag.models import DocumentIndex, PageNode, QueryResult, SourceReference
 from treerag.parser import parse_document
 from treerag.provider import LLMProvider, OpenAIProvider
-from treerag.retrieval import assemble_context, retrieve_leaf
+from treerag.retrieval import retrieve
 from treerag.storage import load_index, save_index
 
 
@@ -69,21 +69,28 @@ def query_index(
     active_provider = provider or OpenAIProvider()
 
     document_index = load_index(Path(index_path))
-    leaf = retrieve_leaf(
+    retrieval_result = retrieve(
         question,
         root=document_index.root,
         provider=active_provider,
         model_config=active_model_config,
+        config=config,
     )
-    context, included_nodes = assemble_context(leaf, config=config)
-    answer = active_provider.answer(question, context=context, model_config=active_model_config)
+    answer = active_provider.answer(
+        question,
+        context=retrieval_result.context,
+        model_config=active_model_config,
+    )
     return QueryResult(
         answer=answer,
-        context=context,
-        selected_leaf_id=leaf.node_id,
-        selected_leaf_title=leaf.title,
-        navigation_path=leaf.path_titles(),
-        included_sections=[node.title for node in included_nodes],
+        context=retrieval_result.context,
+        source_path=document_index.source_path,
+        selected_leaf_id=retrieval_result.leaf.node_id,
+        selected_leaf_title=retrieval_result.leaf.title,
+        selected_source_span=retrieval_result.leaf.source_span,
+        navigation_path=retrieval_result.leaf.path_titles(),
+        included_sections=[node.title for node in retrieval_result.included_nodes],
+        source_references=_source_references(retrieval_result.included_nodes),
     )
 
 
@@ -91,3 +98,23 @@ def _hash_text(text: str) -> str:
     import hashlib
 
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _source_references(nodes: tuple[PageNode, ...]) -> list[SourceReference]:
+    references: list[SourceReference] = []
+    seen: set[str] = set()
+    for node in nodes:
+        if node.node_id in seen or node.depth == 0 or node.source_span is None:
+            continue
+        references.append(
+            SourceReference(
+                node_id=node.node_id,
+                title=node.title,
+                start_char=node.source_span.start_char,
+                end_char=node.source_span.end_char,
+                start_line=node.source_span.start_line,
+                end_line=node.source_span.end_line,
+            )
+        )
+        seen.add(node.node_id)
+    return references

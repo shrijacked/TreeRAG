@@ -12,6 +12,7 @@ from typing import Any, Mapping
 from treerag.api import build_index, query_index
 from treerag.config import IndexConfig, ModelConfig, RetrievalConfig
 from treerag.errors import ParseError, RoutingError, StorageError
+from treerag.models import SourceReference, SourceSpan
 from treerag.provider import LLMProvider, OpenAIProvider, RouteChoice
 
 CORPUS_SCHEMA_VERSION = 1
@@ -48,10 +49,13 @@ class CorpusQueryResult:
     document_index_path: str
     answer: str
     context: str
+    source_path: str
     selected_leaf_id: str
     selected_leaf_title: str
+    selected_source_span: SourceSpan | None
     navigation_path: list[str]
     included_sections: list[str]
+    source_references: list[SourceReference]
 
 
 def build_corpus(
@@ -143,10 +147,13 @@ def query_corpus(
         document_index_path=document.index_path,
         answer=query_result.answer,
         context=query_result.context,
+        source_path=query_result.source_path,
         selected_leaf_id=query_result.selected_leaf_id,
         selected_leaf_title=query_result.selected_leaf_title,
+        selected_source_span=query_result.selected_source_span,
         navigation_path=query_result.navigation_path,
         included_sections=query_result.included_sections,
+        source_references=query_result.source_references,
     )
 
 

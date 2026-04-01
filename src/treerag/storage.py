@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from treerag.errors import StorageError
-from treerag.models import DocumentIndex, PageNode
+from treerag.models import DocumentIndex, PageNode, SourceSpan
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+SUPPORTED_SCHEMA_VERSIONS = {1, 2}
 
 
 class MissingIndexError(FileNotFoundError, StorageError):
@@ -61,9 +62,10 @@ def load_index(path: str | Path) -> DocumentIndex:
         raise MalformedIndexError("Index payload must be a JSON object.")
 
     schema_version = payload.get("schema_version")
-    if schema_version != SCHEMA_VERSION:
+    if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
         raise MalformedIndexError(
-            f"Unsupported index schema_version {schema_version}; expected {SCHEMA_VERSION}."
+            "Unsupported index schema_version "
+            f"{schema_version}; expected one of {sorted(SUPPORTED_SCHEMA_VERSIONS)}."
         )
 
     source_path = _require_str(payload, "source_path", "index")
@@ -91,6 +93,7 @@ def _node_to_dict(node: PageNode) -> dict[str, Any]:
         "content": node.content,
         "summary": node.summary,
         "depth": node.depth,
+        "source_span": _span_to_dict(node.source_span),
         "children": [_node_to_dict(child) for child in node.children],
     }
 
@@ -102,6 +105,7 @@ def _node_from_dict(payload: Mapping[str, Any], parent: PageNode | None) -> Page
         content=_require_str(payload, "content", "node"),
         summary=_require_str(payload, "summary", "node"),
         depth=_require_int(payload, "depth", "node"),
+        source_span=_optional_span(payload.get("source_span"), "node"),
     )
     node.parent = parent
     children_payload = payload.get("children")
@@ -140,3 +144,27 @@ def _coerce_mapping(payload: Any, context: str) -> Mapping[str, Any]:
     if not isinstance(payload, Mapping):
         raise MalformedIndexError(f"{context} must be a JSON object")
     return payload
+
+
+def _span_to_dict(span: SourceSpan | None) -> dict[str, int] | None:
+    if span is None:
+        return None
+    return {
+        "start_char": span.start_char,
+        "end_char": span.end_char,
+        "start_line": span.start_line,
+        "end_line": span.end_line,
+    }
+
+
+def _optional_span(payload: Any, context: str) -> SourceSpan | None:
+    if payload is None:
+        return None
+    if not isinstance(payload, Mapping):
+        raise MalformedIndexError(f"{context} has an invalid 'source_span' field")
+    return SourceSpan(
+        start_char=_require_int(payload, "start_char", "source span"),
+        end_char=_require_int(payload, "end_char", "source span"),
+        start_line=_require_int(payload, "start_line", "source span"),
+        end_line=_require_int(payload, "end_line", "source span"),
+    )
