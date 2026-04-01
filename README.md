@@ -362,6 +362,15 @@ That fixture is meant to pressure-test the exact retrieval story people usually 
 
 That gives you a concrete way to measure whether TreeRAG is actually helping on the same document and question set, instead of only reporting a single-method accuracy number.
 
+If you want repeated-run timing and consistency sampling, add `--repeat`:
+
+```bash
+treerag compare examples/noisy_finance_report.md benchmarks/comparison_cases.json \
+  --index-path .cache/treerag/noisy-finance.compare.index.json \
+  --cache-dir .cache/treerag \
+  --repeat 5
+```
+
 `treerag corpus-compare` does the same thing at the multi-document layer. It runs:
 
 - `tree_rag`: normal corpus routing plus normal tree retrieval inside the selected document
@@ -369,6 +378,8 @@ That gives you a concrete way to measure whether TreeRAG is actually helping on 
 - `full_context`: a no-routing baseline that dumps the whole corpus into the answer step
 
 That gives you a concrete way to test whether TreeRAG is actually adding value at the document-selection layer, instead of only winning after the right document has already been chosen.
+
+`--repeat` works here too, and the JSON output now includes `total_runs`, `query_samples_ms`, and simple consistency flags for document choice, leaf choice, and answer text.
 
 The broader validation path is tracked in [`docs/validation-roadmap.md`](/Users/owlxshri/Desktop/TreeRAG/docs/validation-roadmap.md).
 

@@ -172,11 +172,21 @@ treerag corpus-compare build/ops-compare \
   --cache-dir .cache/treerag
 ```
 
+- Run repeated comparison sampling:
+
+```bash
+treerag compare examples/noisy_finance_report.md benchmarks/comparison_cases.json \
+  --index-path .cache/treerag/noisy-finance.compare.index.json \
+  --cache-dir .cache/treerag \
+  --repeat 5
+```
+
 - Expected result:
   - `passed_count` equals `case_count`
   - appendix cases route to `Appendix G - Debt Schedule` or `Appendix H - Covenant Notes`
   - comparison output includes `tree_rag`, `keyword_leaf`, and `full_context`
   - corpus comparison output includes `tree_rag`, `keyword_document`, and `full_context`
+  - repeated comparison output includes `total_runs`, `query_samples_ms`, and consistency flags
 
 ## Interactive UX
 

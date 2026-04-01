@@ -20,6 +20,7 @@ flowchart LR
 - Accuracy on packaged single-document evals with expected leaf titles and answer substrings
 - Side-by-side comparison against simpler baselines via `treerag compare`
 - Corpus-level side-by-side comparison against simpler document-selection baselines via `treerag corpus-compare`
+- Repeated-run timing and consistency sampling via `--repeat` on comparison commands
 - Appendix-heavy and noisy-document fixtures that stress low-overlap retrieval
 
 ## Next Proof Milestones
