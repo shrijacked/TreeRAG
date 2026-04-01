@@ -7,6 +7,8 @@ from treerag.benchmark import (
     BenchmarkReport,
     ComparisonMethodReport,
     ComparisonReport,
+    CostEstimate,
+    ModelPricing,
     run_benchmark,
     run_comparison_benchmark,
     run_corpus_benchmark,
@@ -22,13 +24,20 @@ from treerag.corpus import (
     query_corpus,
 )
 from treerag.models import DocumentIndex, PageNode, QueryResult, SourceReference, SourceSpan
-from treerag.provider import GeminiProvider, OpenAIProvider, create_provider
+from treerag.provider import (
+    GeminiProvider,
+    OpenAIProvider,
+    TokenUsage,
+    UsageSnapshot,
+    create_provider,
+)
 
 __all__ = [
     "__version__",
     "BenchmarkCase",
     "BenchmarkCaseResult",
     "BenchmarkReport",
+    "CostEstimate",
     "ComparisonMethodReport",
     "ComparisonReport",
     "CorpusDocument",
@@ -37,6 +46,7 @@ __all__ = [
     "DocumentIndex",
     "IndexConfig",
     "ModelConfig",
+    "ModelPricing",
     "PageNode",
     "QueryResult",
     "RetrievalConfig",
@@ -44,6 +54,8 @@ __all__ = [
     "SourceSpan",
     "GeminiProvider",
     "OpenAIProvider",
+    "TokenUsage",
+    "UsageSnapshot",
     "build_index",
     "build_corpus",
     "create_provider",

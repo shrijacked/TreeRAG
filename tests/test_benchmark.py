@@ -17,6 +17,7 @@ from treerag.benchmark import (
 from treerag.cli import main
 from treerag.config import IndexConfig, ModelConfig, RetrievalConfig
 from treerag.models import Section
+from treerag.provider import TokenUsage
 
 
 def _write_document(tmp_path: Path) -> Path:
@@ -330,6 +331,81 @@ def test_run_benchmark_reports_pass_and_failure_counts(tmp_path: Path) -> None:
     assert all(case.passed for case in report.case_results)
 
 
+def test_run_benchmark_reports_usage_and_estimated_cost(tmp_path: Path) -> None:
+    document_path = _write_document(tmp_path)
+    cases_path = _write_cases(tmp_path)
+    index_path = tmp_path / "jira.index.json"
+    provider = FakeProvider(
+        segment_responses=[
+            [Section(title="Incident Management", content=" ".join(["policy"] * 301))],
+            [
+                Section(
+                    title="Severity Levels",
+                    content="Update the status page within five minutes.",
+                ),
+                Section(
+                    title="Escalation Policy",
+                    content="Page the primary on-call immediately and escalate after five minutes.",
+                ),
+                Section(
+                    title="Notification Rules",
+                    content="Notify support leadership once engineering acknowledges the incident.",
+                ),
+            ],
+        ],
+        summary_responses=[
+            "Status updates happen quickly for critical incidents.",
+            "Escalations start with the primary on-call and step up after five minutes.",
+            "Leadership notifications happen after engineering acknowledgment.",
+            "Incident management covers severity, escalation, and communication.",
+            "The runbook explains how to coordinate a Sev-1 incident.",
+        ],
+        route_responses=[0, 1, 0, 2],
+        answer_responses=[
+            "Page the primary on-call immediately and escalate after five minutes.",
+            "Support leadership should be notified after engineering acknowledges the incident.",
+        ],
+        segment_usages=[
+            TokenUsage(requests=1, input_tokens=100, output_tokens=20, total_tokens=120)
+        ],
+        summary_usages=[
+            TokenUsage(requests=1, input_tokens=80, output_tokens=10, total_tokens=90),
+            TokenUsage(requests=1, input_tokens=80, output_tokens=10, total_tokens=90),
+            TokenUsage(requests=1, input_tokens=80, output_tokens=10, total_tokens=90),
+            TokenUsage(requests=1, input_tokens=80, output_tokens=10, total_tokens=90),
+            TokenUsage(requests=1, input_tokens=80, output_tokens=10, total_tokens=90),
+        ],
+        route_usages=[
+            TokenUsage(requests=1, input_tokens=30, output_tokens=1, total_tokens=31),
+            TokenUsage(requests=1, input_tokens=30, output_tokens=1, total_tokens=31),
+            TokenUsage(requests=1, input_tokens=30, output_tokens=1, total_tokens=31),
+            TokenUsage(requests=1, input_tokens=30, output_tokens=1, total_tokens=31),
+        ],
+        answer_usages=[
+            TokenUsage(requests=1, input_tokens=60, output_tokens=20, total_tokens=80),
+            TokenUsage(requests=1, input_tokens=60, output_tokens=20, total_tokens=80),
+        ],
+    )
+
+    report = run_benchmark(
+        document_path,
+        cases_path,
+        index_path,
+        IndexConfig(cache_dir=tmp_path / ".cache"),
+        RetrievalConfig(sibling_window=1, include_ancestor_summaries=True),
+        model_config=ModelConfig(),
+        provider=provider,
+    )
+
+    assert report.total_usage is not None
+    assert report.total_cost_estimate is not None
+    assert report.total_usage.total.requests == 13
+    assert report.total_cost_estimate.total_cost_usd is not None
+    assert report.total_cost_estimate.total_cost_usd > 0
+    assert report.case_results[0].usage is not None
+    assert report.case_results[0].cost_estimate is not None
+
+
 def test_benchmark_cli_outputs_summary_json(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -440,6 +516,75 @@ def test_run_comparison_benchmark_reports_method_level_results(tmp_path: Path) -
     assert methods["tree_rag"].passed_count == 1
     assert methods["keyword_leaf"].failed_count == 1
     assert methods["full_context"].passed_count == 1
+
+
+def test_run_comparison_benchmark_reports_method_costs(tmp_path: Path) -> None:
+    document_path = _write_comparison_document(tmp_path)
+    cases_path = _write_comparison_cases(tmp_path)
+    index_path = tmp_path / "finance.index.json"
+    provider = ContextAwareComparisonProvider(
+        segment_responses=[
+            [
+                Section(
+                    title="Executive Summary",
+                    content="Debt trends are discussed later in the report.",
+                ),
+                Section(
+                    title="Liquidity Overview",
+                    content=(
+                        "In Q3, management said leverage was improving and debt schedules "
+                        "were being simplified."
+                    ),
+                ),
+                Section(
+                    title="Appendix G - Debt Schedule",
+                    content=(
+                        "At September 30, short-term borrowings were $61 million versus "
+                        "$84 million at June 30."
+                    ),
+                ),
+            ]
+        ],
+        summary_responses=[
+            "Debt trends are discussed later in the report.",
+            "Management said leverage was improving in Q3.",
+            "Short-term borrowings fell to $61 million from $84 million.",
+            "The report covers summary, liquidity, and debt schedule details.",
+        ],
+        route_responses=[2],
+        segment_usages=[
+            TokenUsage(requests=1, input_tokens=90, output_tokens=15, total_tokens=105)
+        ],
+        summary_usages=[
+            TokenUsage(requests=1, input_tokens=70, output_tokens=8, total_tokens=78),
+            TokenUsage(requests=1, input_tokens=70, output_tokens=8, total_tokens=78),
+            TokenUsage(requests=1, input_tokens=70, output_tokens=8, total_tokens=78),
+            TokenUsage(requests=1, input_tokens=70, output_tokens=8, total_tokens=78),
+        ],
+        route_usages=[TokenUsage(requests=1, input_tokens=25, output_tokens=1, total_tokens=26)],
+        answer_usages=[
+            TokenUsage(requests=1, input_tokens=50, output_tokens=10, total_tokens=60),
+            TokenUsage(requests=1, input_tokens=40, output_tokens=8, total_tokens=48),
+            TokenUsage(requests=1, input_tokens=120, output_tokens=12, total_tokens=132),
+        ],
+    )
+
+    report = run_comparison_benchmark(
+        document_path,
+        cases_path,
+        index_path,
+        IndexConfig(cache_dir=tmp_path / ".cache", subsection_word_threshold=999),
+        RetrievalConfig(sibling_window=0, include_ancestor_summaries=False),
+        model_config=ModelConfig(),
+        provider=provider,
+    )
+
+    method = {entry.method: entry for entry in report.methods}["tree_rag"]
+    assert method.usage is not None
+    assert method.cost_estimate is not None
+    assert method.cost_estimate.total_cost_usd is not None
+    assert method.case_results[0].usage is not None
+    assert report.total_usage is not None
 
 
 def test_compare_cli_outputs_method_summary_json(

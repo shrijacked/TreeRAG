@@ -25,6 +25,78 @@ class RouteChoice:
     summary: str
 
 
+@dataclass(frozen=True)
+class TokenUsage:
+    """Token and request accounting for one model or one run segment."""
+
+    requests: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cached_input_tokens: int = 0
+
+    def add(self, other: "TokenUsage") -> "TokenUsage":
+        return TokenUsage(
+            requests=self.requests + other.requests,
+            input_tokens=self.input_tokens + other.input_tokens,
+            output_tokens=self.output_tokens + other.output_tokens,
+            total_tokens=self.total_tokens + other.total_tokens,
+            cached_input_tokens=self.cached_input_tokens + other.cached_input_tokens,
+        )
+
+    def subtract(self, other: "TokenUsage") -> "TokenUsage":
+        return TokenUsage(
+            requests=max(0, self.requests - other.requests),
+            input_tokens=max(0, self.input_tokens - other.input_tokens),
+            output_tokens=max(0, self.output_tokens - other.output_tokens),
+            total_tokens=max(0, self.total_tokens - other.total_tokens),
+            cached_input_tokens=max(0, self.cached_input_tokens - other.cached_input_tokens),
+        )
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "requests": self.requests,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "cached_input_tokens": self.cached_input_tokens,
+        }
+
+
+@dataclass(frozen=True)
+class UsageSnapshot:
+    """Provider usage totals keyed by model name."""
+
+    by_model: dict[str, TokenUsage]
+
+    @property
+    def total(self) -> TokenUsage:
+        aggregate = TokenUsage()
+        for usage in self.by_model.values():
+            aggregate = aggregate.add(usage)
+        return aggregate
+
+    def delta(self, previous: "UsageSnapshot") -> "UsageSnapshot":
+        models = set(self.by_model) | set(previous.by_model)
+        diff = {
+            model: self.by_model.get(model, TokenUsage()).subtract(
+                previous.by_model.get(model, TokenUsage())
+            )
+            for model in models
+        }
+        return UsageSnapshot(
+            by_model={model: usage for model, usage in diff.items() if usage != TokenUsage()}
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "total": self.total.to_dict(),
+            "by_model": {
+                model: usage.to_dict() for model, usage in sorted(self.by_model.items())
+            },
+        }
+
+
 class LLMProvider(Protocol):
     """Protocol for pluggable model backends."""
 
@@ -54,6 +126,9 @@ class LLMProvider(Protocol):
     def answer(self, question: str, *, context: str, model_config: ModelConfig) -> str:
         ...
 
+    def usage_snapshot(self) -> UsageSnapshot:
+        ...
+
 
 class OpenAIProvider:
     """OpenAI-backed implementation of the provider protocol."""
@@ -71,6 +146,7 @@ class OpenAIProvider:
             timeout=timeout_seconds,
             max_retries=max_retries,
         )
+        self._usage_by_model: dict[str, TokenUsage] = {}
 
     def segment(self, text: str, *, model_config: ModelConfig, char_limit: int) -> list[Section]:
         prompt = (
@@ -171,6 +247,9 @@ class OpenAIProvider:
             max_completion_tokens=model_config.answer_max_completion_tokens,
         ).strip()
 
+    def usage_snapshot(self) -> UsageSnapshot:
+        return UsageSnapshot(by_model=dict(self._usage_by_model))
+
     def _chat_completion(
         self,
         *,
@@ -190,13 +269,19 @@ class OpenAIProvider:
             response = self.client.chat.completions.create(**kwargs)
         except OpenAIError as exc:
             raise ProviderError(str(exc)) from exc
+        self._record_usage(model, _openai_token_usage(response))
         return _extract_message_text(response)
+
+    def _record_usage(self, model: str, usage: TokenUsage) -> None:
+        current = self._usage_by_model.get(model, TokenUsage())
+        self._usage_by_model[model] = current.add(usage)
 
 
 class GeminiProvider:
     """Gemini-backed implementation of the provider protocol."""
 
     def __init__(self, *, client: Any | None = None, api_key: str | None = None) -> None:
+        self._usage_by_model: dict[str, TokenUsage] = {}
         if client is not None:
             self.client = client
             return
@@ -305,6 +390,9 @@ class GeminiProvider:
             max_output_tokens=model_config.answer_max_completion_tokens,
         ).strip()
 
+    def usage_snapshot(self) -> UsageSnapshot:
+        return UsageSnapshot(by_model=dict(self._usage_by_model))
+
     def _generate(
         self,
         *,
@@ -325,7 +413,12 @@ class GeminiProvider:
             )
         except Exception as exc:  # pragma: no cover - SDK-specific subclasses vary by version
             raise ProviderError(str(exc)) from exc
+        self._record_usage(model, _gemini_token_usage(response))
         return _extract_text_response(response)
+
+    def _record_usage(self, model: str, usage: TokenUsage) -> None:
+        current = self._usage_by_model.get(model, TokenUsage())
+        self._usage_by_model[model] = current.add(usage)
 
 
 def create_provider(
@@ -337,6 +430,53 @@ def create_provider(
     if normalized == "gemini":
         return GeminiProvider(client=client, api_key=api_key)
     raise ProviderError(f"Unknown provider {name!r}. Expected one of: openai, gemini.")
+
+
+def _openai_token_usage(response: Any) -> TokenUsage:
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return TokenUsage()
+
+    prompt_tokens = _int_field(usage, "prompt_tokens")
+    completion_tokens = _int_field(usage, "completion_tokens")
+    total_tokens = _int_field(usage, "total_tokens") or (prompt_tokens + completion_tokens)
+    prompt_details = _object_field(usage, "prompt_tokens_details")
+    cached_tokens = _int_field(prompt_details, "cached_tokens")
+    return TokenUsage(
+        requests=1,
+        input_tokens=prompt_tokens,
+        output_tokens=completion_tokens,
+        total_tokens=total_tokens,
+        cached_input_tokens=cached_tokens,
+    )
+
+
+def _gemini_token_usage(response: Any) -> TokenUsage:
+    usage = getattr(response, "usage_metadata", None)
+    if usage is None:
+        return TokenUsage()
+
+    prompt_tokens = _int_field(usage, "prompt_token_count", "promptTokenCount")
+    completion_tokens = _int_field(
+        usage,
+        "candidates_token_count",
+        "candidatesTokenCount",
+    )
+    total_tokens = _int_field(usage, "total_token_count", "totalTokenCount") or (
+        prompt_tokens + completion_tokens
+    )
+    cached_tokens = _int_field(
+        usage,
+        "cached_content_token_count",
+        "cachedContentTokenCount",
+    )
+    return TokenUsage(
+        requests=1,
+        input_tokens=prompt_tokens,
+        output_tokens=completion_tokens,
+        total_tokens=total_tokens,
+        cached_input_tokens=cached_tokens,
+    )
 
 
 def _extract_message_text(response: Any) -> str:
@@ -364,6 +504,29 @@ def _extract_text_response(response: Any) -> str:
     if isinstance(text, str):
         return text
     raise ProviderError("Provider response did not include a text payload.")
+
+
+def _int_field(source: Any, *names: str) -> int:
+    for name in names:
+        value = _raw_field(source, name)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, int):
+            return value
+    return 0
+
+
+def _object_field(source: Any, name: str) -> Any:
+    value = _raw_field(source, name)
+    return value
+
+
+def _raw_field(source: Any, name: str) -> Any:
+    if source is None:
+        return None
+    if isinstance(source, dict):
+        return source.get(name)
+    return getattr(source, name, None)
 
 
 _SEGMENTATION_SCHEMA: dict[str, Any] = {

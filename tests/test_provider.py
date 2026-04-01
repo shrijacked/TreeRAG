@@ -7,7 +7,13 @@ import pytest
 
 from treerag.config import ModelConfig
 from treerag.errors import ParseError, ProviderError, RoutingError
-from treerag.provider import GeminiProvider, OpenAIProvider, RouteChoice, create_provider
+from treerag.provider import (
+    GeminiProvider,
+    OpenAIProvider,
+    RouteChoice,
+    TokenUsage,
+    create_provider,
+)
 
 
 def _fake_client(content: str, capture: list[dict[str, Any]] | None = None) -> SimpleNamespace:
@@ -94,3 +100,62 @@ def test_create_provider_supports_gemini() -> None:
 def test_create_provider_rejects_unknown_name() -> None:
     with pytest.raises(ProviderError):
         create_provider("mystery")
+
+
+def test_openai_provider_records_usage_snapshot() -> None:
+    usage = SimpleNamespace(
+        prompt_tokens=120,
+        completion_tokens=30,
+        total_tokens=150,
+        prompt_tokens_details=SimpleNamespace(cached_tokens=20),
+    )
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="hello"))],
+        usage=usage,
+    )
+    provider = OpenAIProvider(
+        client=SimpleNamespace(
+            chat=SimpleNamespace(
+                completions=SimpleNamespace(create=lambda **_: response)
+            )
+        )
+    )
+
+    provider.answer("question", context="context", model_config=ModelConfig())
+    snapshot = provider.usage_snapshot()
+
+    assert snapshot.total == TokenUsage(
+        requests=1,
+        input_tokens=120,
+        output_tokens=30,
+        total_tokens=150,
+        cached_input_tokens=20,
+    )
+    assert snapshot.by_model[ModelConfig().answer_model].cached_input_tokens == 20
+
+
+def test_gemini_provider_records_usage_snapshot() -> None:
+    usage_metadata = SimpleNamespace(
+        prompt_token_count=90,
+        candidates_token_count=15,
+        total_token_count=105,
+        cached_content_token_count=10,
+    )
+    response = SimpleNamespace(text="hello", usage_metadata=usage_metadata)
+    provider = GeminiProvider(
+        client=SimpleNamespace(
+            models=SimpleNamespace(generate_content=lambda **_: response)
+        )
+    )
+
+    provider.answer("question", context="context", model_config=ModelConfig())
+    snapshot = provider.usage_snapshot()
+
+    assert snapshot.total == TokenUsage(
+        requests=1,
+        input_tokens=90,
+        output_tokens=15,
+        total_tokens=105,
+        cached_input_tokens=10,
+    )
+    assert snapshot.by_model[ModelConfig().answer_model].output_tokens == 15

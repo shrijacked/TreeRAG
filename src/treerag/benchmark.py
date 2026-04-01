@@ -13,13 +13,51 @@ from treerag.config import IndexConfig, ModelConfig, RetrievalConfig
 from treerag.corpus import CorpusDocument, CorpusIndex, build_corpus, load_corpus, query_corpus
 from treerag.errors import ParseError
 from treerag.models import PageNode
-from treerag.provider import LLMProvider
+from treerag.provider import LLMProvider, TokenUsage, UsageSnapshot
 from treerag.retrieval import assemble_context
 
 TREE_RAG_METHOD = "tree_rag"
 KEYWORD_LEAF_METHOD = "keyword_leaf"
 KEYWORD_DOCUMENT_METHOD = "keyword_document"
 FULL_CONTEXT_METHOD = "full_context"
+
+
+@dataclass(frozen=True)
+class ModelPricing:
+    """Per-model input/output pricing in USD per 1M tokens."""
+
+    input_per_million_tokens_usd: float
+    output_per_million_tokens_usd: float
+    cached_input_per_million_tokens_usd: float = 0.0
+
+
+DEFAULT_MODEL_PRICING: dict[str, ModelPricing] = {
+    "gpt-5.4": ModelPricing(
+        input_per_million_tokens_usd=2.50,
+        output_per_million_tokens_usd=15.00,
+        cached_input_per_million_tokens_usd=0.25,
+    ),
+    "gpt-5.4-mini": ModelPricing(
+        input_per_million_tokens_usd=0.750,
+        output_per_million_tokens_usd=4.500,
+        cached_input_per_million_tokens_usd=0.075,
+    ),
+    "gemini-2.5-flash": ModelPricing(
+        input_per_million_tokens_usd=0.30,
+        output_per_million_tokens_usd=2.50,
+        cached_input_per_million_tokens_usd=0.03,
+    ),
+    "gemini-2.5-pro": ModelPricing(
+        input_per_million_tokens_usd=1.25,
+        output_per_million_tokens_usd=10.00,
+        cached_input_per_million_tokens_usd=0.125,
+    ),
+    "gemini-2.5-flash-lite": ModelPricing(
+        input_per_million_tokens_usd=0.10,
+        output_per_million_tokens_usd=0.40,
+        cached_input_per_million_tokens_usd=0.01,
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -50,6 +88,8 @@ class BenchmarkCaseResult:
     document_consistent: bool = True
     leaf_consistent: bool = True
     answer_consistent: bool = True
+    usage: UsageSnapshot | None = None
+    cost_estimate: "CostEstimate" | None = None
 
     @property
     def passed(self) -> bool:
@@ -75,6 +115,10 @@ class BenchmarkCaseResult:
             "document_consistent": self.document_consistent,
             "leaf_consistent": self.leaf_consistent,
             "answer_consistent": self.answer_consistent,
+            "usage": self.usage.to_dict() if self.usage is not None else None,
+            "cost_estimate": (
+                self.cost_estimate.to_dict() if self.cost_estimate is not None else None
+            ),
             "passed": self.passed,
         }
 
@@ -89,6 +133,12 @@ class BenchmarkReport:
     total_query_duration_ms: float
     total_duration_ms: float
     case_results: list[BenchmarkCaseResult]
+    build_usage: UsageSnapshot | None = None
+    query_usage: UsageSnapshot | None = None
+    total_usage: UsageSnapshot | None = None
+    build_cost_estimate: "CostEstimate" | None = None
+    query_cost_estimate: "CostEstimate" | None = None
+    total_cost_estimate: "CostEstimate" | None = None
 
     @property
     def case_count(self) -> int:
@@ -112,6 +162,24 @@ class BenchmarkReport:
             "case_count": self.case_count,
             "passed_count": self.passed_count,
             "failed_count": self.failed_count,
+            "build_usage": self.build_usage.to_dict() if self.build_usage is not None else None,
+            "query_usage": self.query_usage.to_dict() if self.query_usage is not None else None,
+            "total_usage": self.total_usage.to_dict() if self.total_usage is not None else None,
+            "build_cost_estimate": (
+                self.build_cost_estimate.to_dict()
+                if self.build_cost_estimate is not None
+                else None
+            ),
+            "query_cost_estimate": (
+                self.query_cost_estimate.to_dict()
+                if self.query_cost_estimate is not None
+                else None
+            ),
+            "total_cost_estimate": (
+                self.total_cost_estimate.to_dict()
+                if self.total_cost_estimate is not None
+                else None
+            ),
             "cases": [result.to_dict() for result in self.case_results],
         }
 
@@ -124,6 +192,8 @@ class ComparisonMethodReport:
     total_query_duration_ms: float
     total_runs: int
     case_results: list[BenchmarkCaseResult]
+    usage: UsageSnapshot | None = None
+    cost_estimate: "CostEstimate" | None = None
 
     @property
     def case_count(self) -> int:
@@ -152,6 +222,10 @@ class ComparisonMethodReport:
             "failed_count": self.failed_count,
             "total_query_duration_ms": round(self.total_query_duration_ms, 3),
             "average_query_duration_ms": round(self.average_query_duration_ms, 3),
+            "usage": self.usage.to_dict() if self.usage is not None else None,
+            "cost_estimate": (
+                self.cost_estimate.to_dict() if self.cost_estimate is not None else None
+            ),
             "cases": [result.to_dict() for result in self.case_results],
         }
 
@@ -165,6 +239,10 @@ class ComparisonReport:
     build_duration_ms: float
     total_duration_ms: float
     methods: list[ComparisonMethodReport]
+    build_usage: UsageSnapshot | None = None
+    total_usage: UsageSnapshot | None = None
+    build_cost_estimate: "CostEstimate" | None = None
+    total_cost_estimate: "CostEstimate" | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -172,7 +250,44 @@ class ComparisonReport:
             "index_path": self.index_path,
             "build_duration_ms": round(self.build_duration_ms, 3),
             "total_duration_ms": round(self.total_duration_ms, 3),
+            "build_usage": self.build_usage.to_dict() if self.build_usage is not None else None,
+            "total_usage": self.total_usage.to_dict() if self.total_usage is not None else None,
+            "build_cost_estimate": (
+                self.build_cost_estimate.to_dict()
+                if self.build_cost_estimate is not None
+                else None
+            ),
+            "total_cost_estimate": (
+                self.total_cost_estimate.to_dict()
+                if self.total_cost_estimate is not None
+                else None
+            ),
             "methods": [method.to_dict() for method in self.methods],
+        }
+
+
+@dataclass(frozen=True)
+class CostEstimate:
+    """Estimated usage cost from a token snapshot and a pricing table."""
+
+    input_cost_usd: float
+    cached_input_cost_usd: float
+    output_cost_usd: float
+    total_cost_usd: float
+    missing_models: tuple[str, ...] = ()
+
+    @property
+    def pricing_complete(self) -> bool:
+        return not self.missing_models
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "input_cost_usd": round(self.input_cost_usd, 9),
+            "cached_input_cost_usd": round(self.cached_input_cost_usd, 9),
+            "output_cost_usd": round(self.output_cost_usd, 9),
+            "total_cost_usd": round(self.total_cost_usd, 9),
+            "missing_models": list(self.missing_models),
+            "pricing_complete": self.pricing_complete,
         }
 
 
@@ -249,30 +364,37 @@ def run_benchmark(
 
     start_time = perf_counter()
     cases = load_benchmark_cases(cases_path)
+    active_model_config = model_config or ModelConfig()
+    active_provider = _resolve_provider(provider)
 
+    usage_before_build = _usage_snapshot(active_provider)
     build_start = perf_counter()
     build_index(
         input_path,
         index_path,
         index_config,
-        model_config=model_config,
-        provider=provider,
+        model_config=active_model_config,
+        provider=active_provider,
     )
     build_duration_ms = (perf_counter() - build_start) * 1000
+    build_usage = _usage_delta(usage_before_build, _usage_snapshot(active_provider))
 
     case_results: list[BenchmarkCaseResult] = []
     total_query_duration_ms = 0.0
+    usage_before_queries = _usage_snapshot(active_provider)
     for case in cases:
+        case_usage_before = _usage_snapshot(active_provider)
         query_start = perf_counter()
         result = query_index(
             case.question,
             index_path,
             retrieval_config,
-            model_config=model_config,
-            provider=provider,
+            model_config=active_model_config,
+            provider=active_provider,
         )
         query_duration_ms = (perf_counter() - query_start) * 1000
         total_query_duration_ms += query_duration_ms
+        case_usage = _usage_delta(case_usage_before, _usage_snapshot(active_provider))
 
         leaf_match = case.expected_leaf_title is None or (
             result.selected_leaf_title == case.expected_leaf_title
@@ -291,10 +413,14 @@ def run_benchmark(
                 document_match=True,
                 leaf_match=leaf_match,
                 answer_match=answer_match,
+                usage=case_usage,
+                cost_estimate=_estimate_cost(case_usage),
             )
         )
 
     total_duration_ms = (perf_counter() - start_time) * 1000
+    query_usage = _usage_delta(usage_before_queries, _usage_snapshot(active_provider))
+    total_usage = _combine_usage_snapshots(build_usage, query_usage)
     return BenchmarkReport(
         source_path=str(input_path),
         index_path=str(index_path),
@@ -302,6 +428,12 @@ def run_benchmark(
         total_query_duration_ms=total_query_duration_ms,
         total_duration_ms=total_duration_ms,
         case_results=case_results,
+        build_usage=build_usage,
+        query_usage=query_usage,
+        total_usage=total_usage,
+        build_cost_estimate=_estimate_cost(build_usage),
+        query_cost_estimate=_estimate_cost(query_usage),
+        total_cost_estimate=_estimate_cost(total_usage),
     )
 
 
@@ -329,14 +461,9 @@ def run_comparison_benchmark(
     start_time = perf_counter()
     cases = load_benchmark_cases(cases_path)
     active_model_config = model_config or ModelConfig()
-    active_provider: LLMProvider
-    if provider is None:
-        from treerag.provider import OpenAIProvider
+    active_provider = _resolve_provider(provider)
 
-        active_provider = OpenAIProvider()
-    else:
-        active_provider = provider
-
+    usage_before_build = _usage_snapshot(active_provider)
     build_start = perf_counter()
     document_index = build_index(
         input_path,
@@ -346,13 +473,16 @@ def run_comparison_benchmark(
         provider=active_provider,
     )
     build_duration_ms = (perf_counter() - build_start) * 1000
+    build_usage = _usage_delta(usage_before_build, _usage_snapshot(active_provider))
     source_text = Path(input_path).read_text(encoding="utf-8")
 
     method_reports: list[ComparisonMethodReport] = []
+    usage_before_methods = _usage_snapshot(active_provider)
     for method in methods:
         case_results: list[BenchmarkCaseResult] = []
         total_query_duration_ms = 0.0
         total_runs = 0
+        method_usage_before = _usage_snapshot(active_provider)
         for case in cases:
             sample_durations_ms: list[float] = []
             observed_leaf_titles: list[str] = []
@@ -360,6 +490,7 @@ def run_comparison_benchmark(
             selected_leaf_title = ""
             answer = ""
             leaf_match = False
+            case_usage_before = _usage_snapshot(active_provider)
             for _ in range(repeat_count):
                 query_start = perf_counter()
                 selected_leaf_title, answer, leaf_match = _run_single_document_method(
@@ -378,6 +509,7 @@ def run_comparison_benchmark(
                 total_runs += 1
                 observed_leaf_titles.append(selected_leaf_title)
                 observed_answers.append(answer)
+            case_usage = _usage_delta(case_usage_before, _usage_snapshot(active_provider))
 
             answer_match = case.expected_answer_substring is None or (
                 case.expected_answer_substring.lower() in answer.lower()
@@ -397,24 +529,37 @@ def run_comparison_benchmark(
                     document_consistent=True,
                     leaf_consistent=len(set(observed_leaf_titles)) == 1,
                     answer_consistent=len(set(observed_answers)) == 1,
+                    usage=case_usage,
+                    cost_estimate=_estimate_cost(case_usage),
                 )
             )
+        method_usage = _usage_delta(method_usage_before, _usage_snapshot(active_provider))
         method_reports.append(
             ComparisonMethodReport(
                 method=method,
                 total_query_duration_ms=total_query_duration_ms,
                 total_runs=total_runs,
                 case_results=case_results,
+                usage=method_usage,
+                cost_estimate=_estimate_cost(method_usage),
             )
         )
 
     total_duration_ms = (perf_counter() - start_time) * 1000
+    total_usage = _combine_usage_snapshots(
+        build_usage,
+        _usage_delta(usage_before_methods, _usage_snapshot(active_provider)),
+    )
     return ComparisonReport(
         source_path=str(input_path),
         index_path=str(index_path),
         build_duration_ms=build_duration_ms,
         total_duration_ms=total_duration_ms,
         methods=method_reports,
+        build_usage=build_usage,
+        total_usage=total_usage,
+        build_cost_estimate=_estimate_cost(build_usage),
+        total_cost_estimate=_estimate_cost(total_usage),
     )
 
 
@@ -432,30 +577,37 @@ def run_corpus_benchmark(
 
     start_time = perf_counter()
     cases = load_benchmark_cases(cases_path)
+    active_model_config = model_config or ModelConfig()
+    active_provider = _resolve_provider(provider)
 
+    usage_before_build = _usage_snapshot(active_provider)
     build_start = perf_counter()
     build_corpus(
         input_paths,
         corpus_path,
         index_config,
-        model_config=model_config,
-        provider=provider,
+        model_config=active_model_config,
+        provider=active_provider,
     )
     build_duration_ms = (perf_counter() - build_start) * 1000
+    build_usage = _usage_delta(usage_before_build, _usage_snapshot(active_provider))
 
     case_results: list[BenchmarkCaseResult] = []
     total_query_duration_ms = 0.0
+    usage_before_queries = _usage_snapshot(active_provider)
     for case in cases:
+        case_usage_before = _usage_snapshot(active_provider)
         query_start = perf_counter()
         result = query_corpus(
             case.question,
             corpus_path,
             retrieval_config,
-            model_config=model_config,
-            provider=provider,
+            model_config=active_model_config,
+            provider=active_provider,
         )
         query_duration_ms = (perf_counter() - query_start) * 1000
         total_query_duration_ms += query_duration_ms
+        case_usage = _usage_delta(case_usage_before, _usage_snapshot(active_provider))
 
         document_match = case.expected_document_title is None or (
             result.document_title == case.expected_document_title
@@ -477,10 +629,14 @@ def run_corpus_benchmark(
                 document_match=document_match,
                 leaf_match=leaf_match,
                 answer_match=answer_match,
+                usage=case_usage,
+                cost_estimate=_estimate_cost(case_usage),
             )
         )
 
     total_duration_ms = (perf_counter() - start_time) * 1000
+    query_usage = _usage_delta(usage_before_queries, _usage_snapshot(active_provider))
+    total_usage = _combine_usage_snapshots(build_usage, query_usage)
     return BenchmarkReport(
         source_path=str(corpus_path),
         index_path=str(_resolve_benchmark_target_path(corpus_path)),
@@ -488,6 +644,12 @@ def run_corpus_benchmark(
         total_query_duration_ms=total_query_duration_ms,
         total_duration_ms=total_duration_ms,
         case_results=case_results,
+        build_usage=build_usage,
+        query_usage=query_usage,
+        total_usage=total_usage,
+        build_cost_estimate=_estimate_cost(build_usage),
+        query_cost_estimate=_estimate_cost(query_usage),
+        total_cost_estimate=_estimate_cost(total_usage),
     )
 
 
@@ -515,14 +677,9 @@ def run_corpus_comparison_benchmark(
     start_time = perf_counter()
     cases = load_benchmark_cases(cases_path)
     active_model_config = model_config or ModelConfig()
-    active_provider: LLMProvider
-    if provider is None:
-        from treerag.provider import OpenAIProvider
+    active_provider = _resolve_provider(provider)
 
-        active_provider = OpenAIProvider()
-    else:
-        active_provider = provider
-
+    usage_before_build = _usage_snapshot(active_provider)
     build_start = perf_counter()
     build_corpus(
         input_paths,
@@ -532,6 +689,7 @@ def run_corpus_comparison_benchmark(
         provider=active_provider,
     )
     build_duration_ms = (perf_counter() - build_start) * 1000
+    build_usage = _usage_delta(usage_before_build, _usage_snapshot(active_provider))
 
     corpus_index = load_corpus(corpus_path)
     source_texts = {
@@ -540,10 +698,12 @@ def run_corpus_comparison_benchmark(
     }
 
     method_reports: list[ComparisonMethodReport] = []
+    usage_before_methods = _usage_snapshot(active_provider)
     for method in methods:
         case_results: list[BenchmarkCaseResult] = []
         total_query_duration_ms = 0.0
         total_runs = 0
+        method_usage_before = _usage_snapshot(active_provider)
         for case in cases:
             sample_durations_ms: list[float] = []
             observed_document_titles: list[str] = []
@@ -554,6 +714,7 @@ def run_corpus_comparison_benchmark(
             answer = ""
             document_match = False
             leaf_match = False
+            case_usage_before = _usage_snapshot(active_provider)
             for _ in range(repeat_count):
                 query_start = perf_counter()
                 document_title, selected_leaf_title, answer, document_match, leaf_match = (
@@ -575,6 +736,7 @@ def run_corpus_comparison_benchmark(
                 observed_document_titles.append(document_title)
                 observed_leaf_titles.append(selected_leaf_title)
                 observed_answers.append(answer)
+            case_usage = _usage_delta(case_usage_before, _usage_snapshot(active_provider))
 
             answer_match = case.expected_answer_substring is None or (
                 case.expected_answer_substring.lower() in answer.lower()
@@ -594,24 +756,37 @@ def run_corpus_comparison_benchmark(
                     document_consistent=len(set(observed_document_titles)) == 1,
                     leaf_consistent=len(set(observed_leaf_titles)) == 1,
                     answer_consistent=len(set(observed_answers)) == 1,
+                    usage=case_usage,
+                    cost_estimate=_estimate_cost(case_usage),
                 )
             )
+        method_usage = _usage_delta(method_usage_before, _usage_snapshot(active_provider))
         method_reports.append(
             ComparisonMethodReport(
                 method=method,
                 total_query_duration_ms=total_query_duration_ms,
                 total_runs=total_runs,
                 case_results=case_results,
+                usage=method_usage,
+                cost_estimate=_estimate_cost(method_usage),
             )
         )
 
     total_duration_ms = (perf_counter() - start_time) * 1000
+    total_usage = _combine_usage_snapshots(
+        build_usage,
+        _usage_delta(usage_before_methods, _usage_snapshot(active_provider)),
+    )
     return ComparisonReport(
         source_path=str(corpus_path),
         index_path=str(_resolve_benchmark_target_path(corpus_path)),
         build_duration_ms=build_duration_ms,
         total_duration_ms=total_duration_ms,
         methods=method_reports,
+        build_usage=build_usage,
+        total_usage=total_usage,
+        build_cost_estimate=_estimate_cost(build_usage),
+        total_cost_estimate=_estimate_cost(total_usage),
     )
 
 
@@ -620,6 +795,79 @@ def _resolve_benchmark_target_path(path: str | Path) -> Path:
     if candidate.suffix == ".json":
         return candidate
     return candidate / "corpus.json"
+
+
+def _resolve_provider(provider: LLMProvider | None) -> LLMProvider:
+    if provider is not None:
+        return provider
+    from treerag.provider import OpenAIProvider
+
+    return OpenAIProvider()
+
+
+def _usage_snapshot(provider: LLMProvider) -> UsageSnapshot | None:
+    snapshot = getattr(provider, "usage_snapshot", None)
+    if not callable(snapshot):
+        return None
+    usage = snapshot()
+    if isinstance(usage, UsageSnapshot):
+        return usage
+    return None
+
+
+def _usage_delta(
+    previous: UsageSnapshot | None, current: UsageSnapshot | None
+) -> UsageSnapshot | None:
+    if previous is None or current is None:
+        return None
+    return current.delta(previous)
+
+
+def _combine_usage_snapshots(*snapshots: UsageSnapshot | None) -> UsageSnapshot | None:
+    active = [snapshot for snapshot in snapshots if snapshot is not None]
+    if not active:
+        return None
+
+    combined: dict[str, TokenUsage] = {}
+    for snapshot in active:
+        for model, usage in snapshot.by_model.items():
+            combined[model] = combined.get(model, TokenUsage()).add(usage)
+    return UsageSnapshot(by_model=combined)
+
+
+def _estimate_cost(snapshot: UsageSnapshot | None) -> CostEstimate | None:
+    if snapshot is None:
+        return None
+
+    input_cost_usd = 0.0
+    cached_input_cost_usd = 0.0
+    output_cost_usd = 0.0
+    missing_models: list[str] = []
+    for model, usage in snapshot.by_model.items():
+        pricing = DEFAULT_MODEL_PRICING.get(model)
+        if pricing is None:
+            missing_models.append(model)
+            continue
+
+        cached_tokens = min(usage.cached_input_tokens, usage.input_tokens)
+        uncached_tokens = max(0, usage.input_tokens - cached_tokens)
+        input_cost_usd += (
+            uncached_tokens / 1_000_000
+        ) * pricing.input_per_million_tokens_usd
+        cached_input_cost_usd += (
+            cached_tokens / 1_000_000
+        ) * pricing.cached_input_per_million_tokens_usd
+        output_cost_usd += (
+            usage.output_tokens / 1_000_000
+        ) * pricing.output_per_million_tokens_usd
+
+    return CostEstimate(
+        input_cost_usd=input_cost_usd,
+        cached_input_cost_usd=cached_input_cost_usd,
+        output_cost_usd=output_cost_usd,
+        total_cost_usd=input_cost_usd + cached_input_cost_usd + output_cost_usd,
+        missing_models=tuple(sorted(missing_models)),
+    )
 
 
 def _run_single_document_method(
