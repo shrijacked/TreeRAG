@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "name": "q3_debt_trends",
+      "question": "what were the debt trends in q3?",
+      "expected_leaf_title": "Appendix G - Debt Schedule",
+      "expected_answer_substring": "$61 million"
+    },
+    {
+      "name": "borrowing_direction",
+      "question": "did short-term borrowings go up or down during the quarter?",
+      "expected_leaf_title": "Appendix G - Debt Schedule",
+      "expected_answer_substring": "$84 million"
+    },
+    {
+      "name": "covenant_threshold_change",
+      "question": "what changed in the interest coverage covenant?",
+      "expected_leaf_title": "Appendix H - Covenant Notes",
+      "expected_answer_substring": "2.5x"
+    }
+  ]
+}
