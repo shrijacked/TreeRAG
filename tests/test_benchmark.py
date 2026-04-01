@@ -587,6 +587,77 @@ def test_run_comparison_benchmark_reports_method_costs(tmp_path: Path) -> None:
     assert report.total_usage is not None
 
 
+def test_cost_estimate_covers_snapshot_and_preview_model_names(tmp_path: Path) -> None:
+    document_path = _write_comparison_document(tmp_path)
+    cases_path = _write_comparison_cases(tmp_path)
+    index_path = tmp_path / "finance.index.json"
+    provider = ContextAwareComparisonProvider(
+        segment_responses=[
+            [
+                Section(
+                    title="Executive Summary",
+                    content="Debt trends are discussed later in the report.",
+                ),
+                Section(
+                    title="Liquidity Overview",
+                    content=(
+                        "In Q3, management said leverage was improving and debt schedules "
+                        "were being simplified."
+                    ),
+                ),
+                Section(
+                    title="Appendix G - Debt Schedule",
+                    content=(
+                        "At September 30, short-term borrowings were $61 million versus "
+                        "$84 million at June 30."
+                    ),
+                ),
+            ]
+        ],
+        summary_responses=[
+            "Debt trends are discussed later in the report.",
+            "Management said leverage was improving in Q3.",
+            "Short-term borrowings fell to $61 million from $84 million.",
+            "The report covers summary, liquidity, and debt schedule details.",
+        ],
+        route_responses=[2],
+        segment_usages=[
+            TokenUsage(requests=1, input_tokens=90, output_tokens=15, total_tokens=105)
+        ],
+        summary_usages=[
+            TokenUsage(requests=1, input_tokens=70, output_tokens=8, total_tokens=78),
+            TokenUsage(requests=1, input_tokens=70, output_tokens=8, total_tokens=78),
+            TokenUsage(requests=1, input_tokens=70, output_tokens=8, total_tokens=78),
+            TokenUsage(requests=1, input_tokens=70, output_tokens=8, total_tokens=78),
+        ],
+        route_usages=[TokenUsage(requests=1, input_tokens=25, output_tokens=1, total_tokens=26)],
+        answer_usages=[
+            TokenUsage(requests=1, input_tokens=50, output_tokens=10, total_tokens=60),
+            TokenUsage(requests=1, input_tokens=40, output_tokens=8, total_tokens=48),
+            TokenUsage(requests=1, input_tokens=120, output_tokens=12, total_tokens=132),
+        ],
+    )
+
+    report = run_comparison_benchmark(
+        document_path,
+        cases_path,
+        index_path,
+        IndexConfig(cache_dir=tmp_path / ".cache", subsection_word_threshold=999),
+        RetrievalConfig(sibling_window=0, include_ancestor_summaries=False),
+        model_config=ModelConfig(
+            segmentation_model="gpt-5.4-nano-2026-03-17",
+            summarization_model="gpt-5.4-mini-2026-03-17",
+            routing_model="gemini-2.5-flash-lite-preview-09-2025",
+            answer_model="gemini-2.5-flash-002",
+        ),
+        provider=provider,
+    )
+
+    assert report.total_cost_estimate is not None
+    assert report.total_cost_estimate.pricing_complete is True
+    assert report.total_cost_estimate.missing_models == ()
+
+
 def test_compare_cli_outputs_method_summary_json(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -42,6 +42,11 @@ DEFAULT_MODEL_PRICING: dict[str, ModelPricing] = {
         output_per_million_tokens_usd=4.500,
         cached_input_per_million_tokens_usd=0.075,
     ),
+    "gpt-5.4-nano": ModelPricing(
+        input_per_million_tokens_usd=0.20,
+        output_per_million_tokens_usd=1.25,
+        cached_input_per_million_tokens_usd=0.02,
+    ),
     "gemini-2.5-flash": ModelPricing(
         input_per_million_tokens_usd=0.30,
         output_per_million_tokens_usd=2.50,
@@ -58,6 +63,16 @@ DEFAULT_MODEL_PRICING: dict[str, ModelPricing] = {
         cached_input_per_million_tokens_usd=0.01,
     ),
 }
+
+MODEL_PRICING_ALIASES: tuple[tuple[str, str], ...] = (
+    ("gpt-5.4-mini-", "gpt-5.4-mini"),
+    ("gpt-5.4-nano-", "gpt-5.4-nano"),
+    ("gpt-5.4-", "gpt-5.4"),
+    ("gemini-2.5-flash-lite-preview", "gemini-2.5-flash-lite"),
+    ("gemini-2.5-flash-lite-", "gemini-2.5-flash-lite"),
+    ("gemini-2.5-flash-", "gemini-2.5-flash"),
+    ("gemini-2.5-pro-", "gemini-2.5-pro"),
+)
 
 
 @dataclass(frozen=True)
@@ -844,7 +859,7 @@ def _estimate_cost(snapshot: UsageSnapshot | None) -> CostEstimate | None:
     output_cost_usd = 0.0
     missing_models: list[str] = []
     for model, usage in snapshot.by_model.items():
-        pricing = DEFAULT_MODEL_PRICING.get(model)
+        pricing = _pricing_for_model(model)
         if pricing is None:
             missing_models.append(model)
             continue
@@ -868,6 +883,17 @@ def _estimate_cost(snapshot: UsageSnapshot | None) -> CostEstimate | None:
         total_cost_usd=input_cost_usd + cached_input_cost_usd + output_cost_usd,
         missing_models=tuple(sorted(missing_models)),
     )
+
+
+def _pricing_for_model(model: str) -> ModelPricing | None:
+    exact = DEFAULT_MODEL_PRICING.get(model)
+    if exact is not None:
+        return exact
+
+    for prefix, canonical in MODEL_PRICING_ALIASES:
+        if model.startswith(prefix):
+            return DEFAULT_MODEL_PRICING.get(canonical)
+    return None
 
 
 def _run_single_document_method(
