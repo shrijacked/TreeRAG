@@ -91,6 +91,40 @@ def test_gemini_provider_uses_json_response_config() -> None:
     assert capture[0]["config"]["response_json_schema"]["type"] == "object"
 
 
+def test_gemini_provider_disables_thinking_for_deterministic_output() -> None:
+    capture: list[dict[str, Any]] = []
+    provider = GeminiProvider(client=_fake_gemini_client("hello", capture))
+
+    provider.answer("question", context="context", model_config=ModelConfig())
+
+    assert capture[0]["config"]["thinking_config"]["thinking_budget"] == 0
+
+
+def test_gemini_route_reads_text_from_candidate_parts() -> None:
+    response = SimpleNamespace(
+        text=None,
+        candidates=[
+            SimpleNamespace(
+                content=SimpleNamespace(parts=[SimpleNamespace(text="1")])
+            )
+        ],
+    )
+    provider = GeminiProvider(
+        client=SimpleNamespace(
+            models=SimpleNamespace(generate_content=lambda **_: response)
+        )
+    )
+
+    choice = provider.route(
+        "where is the answer?",
+        node_title="root",
+        choices=[RouteChoice(title="A", summary="alpha")],
+        model_config=ModelConfig(),
+    )
+
+    assert choice == 0
+
+
 def test_create_provider_supports_gemini() -> None:
     provider = create_provider("gemini", client=_fake_gemini_client("hello"))
 

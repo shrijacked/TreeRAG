@@ -401,7 +401,12 @@ class GeminiProvider:
         max_output_tokens: int,
         response_json_schema: dict[str, Any] | None = None,
     ) -> str:
-        config: dict[str, Any] = {"max_output_tokens": max_output_tokens}
+        # Disable Gemini's default thinking budget so routing and retrieval
+        # prompts consistently return visible text within small token limits.
+        config: dict[str, Any] = {
+            "max_output_tokens": max_output_tokens,
+            "thinking_config": {"thinking_budget": 0},
+        }
         if response_json_schema is not None:
             config["response_mime_type"] = "application/json"
             config["response_json_schema"] = response_json_schema
@@ -503,6 +508,20 @@ def _extract_text_response(response: Any) -> str:
     text = getattr(response, "text", None)
     if isinstance(text, str):
         return text
+    candidates = _raw_field(response, "candidates")
+    if isinstance(candidates, list):
+        text_chunks: list[str] = []
+        for candidate in candidates:
+            content = _raw_field(candidate, "content")
+            parts = _raw_field(content, "parts")
+            if not isinstance(parts, list):
+                continue
+            for part in parts:
+                part_text = _raw_field(part, "text")
+                if isinstance(part_text, str):
+                    text_chunks.append(part_text)
+        if text_chunks:
+            return "".join(text_chunks)
     raise ProviderError("Provider response did not include a text payload.")
 
 
