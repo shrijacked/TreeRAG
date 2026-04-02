@@ -1,0 +1,298 @@
+{
+  "source_path": "examples/noisy_finance_report.md",
+  "index_path": ".cache/treerag/noisy-finance.gemini.compare.index.json",
+  "build_duration_ms": 2.396,
+  "total_duration_ms": 12074.562,
+  "build_usage": {
+    "total": {
+      "requests": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "cached_input_tokens": 0
+    },
+    "by_model": {}
+  },
+  "total_usage": {
+    "total": {
+      "requests": 4,
+      "input_tokens": 649,
+      "output_tokens": 56,
+      "total_tokens": 2149,
+      "cached_input_tokens": 0
+    },
+    "by_model": {
+      "gemini-2.5-flash": {
+        "requests": 4,
+        "input_tokens": 649,
+        "output_tokens": 56,
+        "total_tokens": 2149,
+        "cached_input_tokens": 0
+      }
+    }
+  },
+  "build_cost_estimate": {
+    "input_cost_usd": 0.0,
+    "cached_input_cost_usd": 0.0,
+    "output_cost_usd": 0.0,
+    "total_cost_usd": 0.0,
+    "missing_models": [],
+    "pricing_complete": true
+  },
+  "total_cost_estimate": {
+    "input_cost_usd": 0.0001947,
+    "cached_input_cost_usd": 0.0,
+    "output_cost_usd": 0.00014,
+    "total_cost_usd": 0.0003347,
+    "missing_models": [],
+    "pricing_complete": true
+  },
+  "methods": [
+    {
+      "method": "tree_rag",
+      "case_count": 1,
+      "total_runs": 1,
+      "passed_count": 0,
+      "failed_count": 1,
+      "total_query_duration_ms": 5318.035,
+      "average_query_duration_ms": 5318.035,
+      "usage": {
+        "total": {
+          "requests": 2,
+          "input_tokens": 348,
+          "output_tokens": 20,
+          "total_tokens": 860,
+          "cached_input_tokens": 0
+        },
+        "by_model": {
+          "gemini-2.5-flash": {
+            "requests": 2,
+            "input_tokens": 348,
+            "output_tokens": 20,
+            "total_tokens": 860,
+            "cached_input_tokens": 0
+          }
+        }
+      },
+      "cost_estimate": {
+        "input_cost_usd": 0.0001044,
+        "cached_input_cost_usd": 0.0,
+        "output_cost_usd": 5e-05,
+        "total_cost_usd": 0.0001544,
+        "missing_models": [],
+        "pricing_complete": true
+      },
+      "cases": [
+        {
+          "name": "q3_debt_trends_compare",
+          "question": "what were the debt trends in q3?",
+          "document_title": null,
+          "selected_leaf_title": "Appendix G Debt Schedule",
+          "answer": "Short-term borrowings decreased from $84 million at June 30 to $61",
+          "query_duration_ms": 5318.035,
+          "query_samples_ms": [
+            5318.035
+          ],
+          "query_sample_count": 1,
+          "document_match": true,
+          "leaf_match": false,
+          "answer_match": false,
+          "document_consistent": true,
+          "leaf_consistent": true,
+          "answer_consistent": true,
+          "usage": {
+            "total": {
+              "requests": 2,
+              "input_tokens": 348,
+              "output_tokens": 20,
+              "total_tokens": 860,
+              "cached_input_tokens": 0
+            },
+            "by_model": {
+              "gemini-2.5-flash": {
+                "requests": 2,
+                "input_tokens": 348,
+                "output_tokens": 20,
+                "total_tokens": 860,
+                "cached_input_tokens": 0
+              }
+            }
+          },
+          "cost_estimate": {
+            "input_cost_usd": 0.0001044,
+            "cached_input_cost_usd": 0.0,
+            "output_cost_usd": 5e-05,
+            "total_cost_usd": 0.0001544,
+            "missing_models": [],
+            "pricing_complete": true
+          },
+          "passed": false
+        }
+      ]
+    },
+    {
+      "method": "keyword_leaf",
+      "case_count": 1,
+      "total_runs": 1,
+      "passed_count": 0,
+      "failed_count": 1,
+      "total_query_duration_ms": 3427.547,
+      "average_query_duration_ms": 3427.547,
+      "usage": {
+        "total": {
+          "requests": 1,
+          "input_tokens": 139,
+          "output_tokens": 16,
+          "total_tokens": 631,
+          "cached_input_tokens": 0
+        },
+        "by_model": {
+          "gemini-2.5-flash": {
+            "requests": 1,
+            "input_tokens": 139,
+            "output_tokens": 16,
+            "total_tokens": 631,
+            "cached_input_tokens": 0
+          }
+        }
+      },
+      "cost_estimate": {
+        "input_cost_usd": 4.17e-05,
+        "cached_input_cost_usd": 0.0,
+        "output_cost_usd": 4e-05,
+        "total_cost_usd": 8.17e-05,
+        "missing_models": [],
+        "pricing_complete": true
+      },
+      "cases": [
+        {
+          "name": "q3_debt_trends_compare",
+          "question": "what were the debt trends in q3?",
+          "document_title": null,
+          "selected_leaf_title": "Executive Summary",
+          "answer": "In Q3, leadership said leverage was improving and debt schedules were being simplified.",
+          "query_duration_ms": 3427.547,
+          "query_samples_ms": [
+            3427.547
+          ],
+          "query_sample_count": 1,
+          "document_match": true,
+          "leaf_match": false,
+          "answer_match": false,
+          "document_consistent": true,
+          "leaf_consistent": true,
+          "answer_consistent": true,
+          "usage": {
+            "total": {
+              "requests": 1,
+              "input_tokens": 139,
+              "output_tokens": 16,
+              "total_tokens": 631,
+              "cached_input_tokens": 0
+            },
+            "by_model": {
+              "gemini-2.5-flash": {
+                "requests": 1,
+                "input_tokens": 139,
+                "output_tokens": 16,
+                "total_tokens": 631,
+                "cached_input_tokens": 0
+              }
+            }
+          },
+          "cost_estimate": {
+            "input_cost_usd": 4.17e-05,
+            "cached_input_cost_usd": 0.0,
+            "output_cost_usd": 4e-05,
+            "total_cost_usd": 8.17e-05,
+            "missing_models": [],
+            "pricing_complete": true
+          },
+          "passed": false
+        }
+      ]
+    },
+    {
+      "method": "full_context",
+      "case_count": 1,
+      "total_runs": 1,
+      "passed_count": 0,
+      "failed_count": 1,
+      "total_query_duration_ms": 3325.936,
+      "average_query_duration_ms": 3325.936,
+      "usage": {
+        "total": {
+          "requests": 1,
+          "input_tokens": 162,
+          "output_tokens": 20,
+          "total_tokens": 658,
+          "cached_input_tokens": 0
+        },
+        "by_model": {
+          "gemini-2.5-flash": {
+            "requests": 1,
+            "input_tokens": 162,
+            "output_tokens": 20,
+            "total_tokens": 658,
+            "cached_input_tokens": 0
+          }
+        }
+      },
+      "cost_estimate": {
+        "input_cost_usd": 4.86e-05,
+        "cached_input_cost_usd": 0.0,
+        "output_cost_usd": 5e-05,
+        "total_cost_usd": 9.86e-05,
+        "missing_models": [],
+        "pricing_complete": true
+      },
+      "cases": [
+        {
+          "name": "q3_debt_trends_compare",
+          "question": "what were the debt trends in q3?",
+          "document_title": null,
+          "selected_leaf_title": "(full document)",
+          "answer": "In Q3, leadership said leverage was improving, and short-term borrowings decreased from $84",
+          "query_duration_ms": 3325.936,
+          "query_samples_ms": [
+            3325.936
+          ],
+          "query_sample_count": 1,
+          "document_match": true,
+          "leaf_match": true,
+          "answer_match": false,
+          "document_consistent": true,
+          "leaf_consistent": true,
+          "answer_consistent": true,
+          "usage": {
+            "total": {
+              "requests": 1,
+              "input_tokens": 162,
+              "output_tokens": 20,
+              "total_tokens": 658,
+              "cached_input_tokens": 0
+            },
+            "by_model": {
+              "gemini-2.5-flash": {
+                "requests": 1,
+                "input_tokens": 162,
+                "output_tokens": 20,
+                "total_tokens": 658,
+                "cached_input_tokens": 0
+              }
+            }
+          },
+          "cost_estimate": {
+            "input_cost_usd": 4.86e-05,
+            "cached_input_cost_usd": 0.0,
+            "output_cost_usd": 5e-05,
+            "total_cost_usd": 9.86e-05,
+            "missing_models": [],
+            "pricing_complete": true
+          },
+          "passed": false
+        }
+      ]
+    }
+  ]
+}

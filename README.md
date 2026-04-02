@@ -384,6 +384,19 @@ That gives you a concrete way to test whether TreeRAG is actually adding value a
 
 Benchmark outputs now also include usage snapshots plus `build_cost_estimate`, `query_cost_estimate`, and `total_cost_estimate` when the provider exposes token usage.
 
+## Live Gemini Evidence
+
+TreeRAG now includes a tracked live Gemini artifact under [`results/gemini/2026-04-03/README.md`](/Users/owlxshri/Desktop/TreeRAG/results/gemini/2026-04-03/README.md).
+
+The first saved comparison run is [`results/gemini/2026-04-03/noisy_finance_compare.json`](/Users/owlxshri/Desktop/TreeRAG/results/gemini/2026-04-03/noisy_finance_compare.json). On that live run:
+
+- `tree_rag` routed to `Appendix G Debt Schedule`
+- `keyword_leaf` stayed in `Executive Summary`
+- `full_context` blended the executive-summary claim with the appendix number
+- total estimated cost was `$0.0003347`
+
+The current comparison fixture still scores that run as failed because it expects exact leaf-title and answer-substring matches. The raw output is still useful because it exposes the retrieval difference directly instead of only a pass/fail badge.
+
 Built-in price estimates currently cover:
 
 - `gpt-5.4`

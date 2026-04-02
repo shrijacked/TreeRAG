@@ -24,6 +24,7 @@ flowchart LR
 - Token usage and cost estimates in benchmark output for supported models
 - Alias-aware pricing resolution for common dated and preview model names
 - Appendix-heavy and noisy-document fixtures that stress low-overlap retrieval
+- Tracked live Gemini evidence in [`results/gemini/2026-04-03/noisy_finance_compare.json`](/Users/owlxshri/Desktop/TreeRAG/results/gemini/2026-04-03/noisy_finance_compare.json)
 
 ## Next Proof Milestones
 
@@ -42,6 +43,8 @@ flowchart TD
   run repeated samples per case and store latency spread instead of one-off timings
 - Phase 4:
   broaden pricing coverage and provider-side usage support so more models produce complete cost estimates
+- Phase 5:
+  store more live multi-case benchmark output once provider quota allows it
 
 ## Current Entry Points
 
