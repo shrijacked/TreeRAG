@@ -518,6 +518,114 @@ def test_run_comparison_benchmark_reports_method_level_results(tmp_path: Path) -
     assert methods["full_context"].passed_count == 1
 
 
+def test_run_comparison_benchmark_normalizes_leaf_title_matches(tmp_path: Path) -> None:
+    document_path = _write_comparison_document(tmp_path)
+    cases_path = _write_comparison_cases(tmp_path)
+    index_path = tmp_path / "finance.index.json"
+    provider = FakeProvider(
+        segment_responses=[
+            [
+                Section(
+                    title="Executive Summary",
+                    content="Debt trends are discussed later in the report.",
+                ),
+                Section(
+                    title="Liquidity Overview",
+                    content=(
+                        "In Q3, management said leverage was improving and debt schedules "
+                        "were being simplified."
+                    ),
+                ),
+                Section(
+                    title="Appendix G Debt Schedule",
+                    content=(
+                        "At September 30, short-term borrowings were $61 million versus "
+                        "$84 million at June 30."
+                    ),
+                ),
+            ]
+        ],
+        summary_responses=[
+            "Debt trends are discussed later in the report.",
+            "Management said leverage was improving in Q3.",
+            "Short-term borrowings fell to $61 million from $84 million.",
+            "The report covers summary, liquidity, and debt schedule details.",
+        ],
+        route_responses=[2],
+        answer_responses=["Short-term borrowings fell to $61 million from $84 million."],
+    )
+
+    report = run_comparison_benchmark(
+        document_path,
+        cases_path,
+        index_path,
+        IndexConfig(cache_dir=tmp_path / ".cache", subsection_word_threshold=999),
+        RetrievalConfig(sibling_window=0, include_ancestor_summaries=False),
+        model_config=ModelConfig(),
+        provider=provider,
+        methods=("tree_rag",),
+    )
+
+    case_result = report.methods[0].case_results[0]
+    assert report.methods[0].passed_count == 1
+    assert case_result.leaf_match is True
+
+
+def test_run_comparison_benchmark_normalizes_answer_substring_matches(
+    tmp_path: Path,
+) -> None:
+    document_path = _write_comparison_document(tmp_path)
+    cases_path = _write_comparison_cases(tmp_path)
+    index_path = tmp_path / "finance.index.json"
+    provider = FakeProvider(
+        segment_responses=[
+            [
+                Section(
+                    title="Executive Summary",
+                    content="Debt trends are discussed later in the report.",
+                ),
+                Section(
+                    title="Liquidity Overview",
+                    content=(
+                        "In Q3, management said leverage was improving and debt schedules "
+                        "were being simplified."
+                    ),
+                ),
+                Section(
+                    title="Appendix G - Debt Schedule",
+                    content=(
+                        "At September 30, short-term borrowings were $61 million versus "
+                        "$84 million at June 30."
+                    ),
+                ),
+            ]
+        ],
+        summary_responses=[
+            "Debt trends are discussed later in the report.",
+            "Management said leverage was improving in Q3.",
+            "Short-term borrowings fell to $61 million from $84 million.",
+            "The report covers summary, liquidity, and debt schedule details.",
+        ],
+        route_responses=[2],
+        answer_responses=["Short term borrowings fell to 61 million from 84 million."],
+    )
+
+    report = run_comparison_benchmark(
+        document_path,
+        cases_path,
+        index_path,
+        IndexConfig(cache_dir=tmp_path / ".cache", subsection_word_threshold=999),
+        RetrievalConfig(sibling_window=0, include_ancestor_summaries=False),
+        model_config=ModelConfig(),
+        provider=provider,
+        methods=("tree_rag",),
+    )
+
+    case_result = report.methods[0].case_results[0]
+    assert report.methods[0].passed_count == 1
+    assert case_result.answer_match is True
+
+
 def test_run_comparison_benchmark_reports_method_costs(tmp_path: Path) -> None:
     document_path = _write_comparison_document(tmp_path)
     cases_path = _write_comparison_cases(tmp_path)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -411,11 +412,13 @@ def run_benchmark(
         total_query_duration_ms += query_duration_ms
         case_usage = _usage_delta(case_usage_before, _usage_snapshot(active_provider))
 
-        leaf_match = case.expected_leaf_title is None or (
-            result.selected_leaf_title == case.expected_leaf_title
+        leaf_match = _matches_expected_title(
+            actual=result.selected_leaf_title,
+            expected=case.expected_leaf_title,
         )
-        answer_match = case.expected_answer_substring is None or (
-            case.expected_answer_substring.lower() in result.answer.lower()
+        answer_match = _matches_expected_answer(
+            actual=result.answer,
+            expected=case.expected_answer_substring,
         )
         case_results.append(
             BenchmarkCaseResult(
@@ -526,8 +529,9 @@ def run_comparison_benchmark(
                 observed_answers.append(answer)
             case_usage = _usage_delta(case_usage_before, _usage_snapshot(active_provider))
 
-            answer_match = case.expected_answer_substring is None or (
-                case.expected_answer_substring.lower() in answer.lower()
+            answer_match = _matches_expected_answer(
+                actual=answer,
+                expected=case.expected_answer_substring,
             )
             case_results.append(
                 BenchmarkCaseResult(
@@ -624,14 +628,17 @@ def run_corpus_benchmark(
         total_query_duration_ms += query_duration_ms
         case_usage = _usage_delta(case_usage_before, _usage_snapshot(active_provider))
 
-        document_match = case.expected_document_title is None or (
-            result.document_title == case.expected_document_title
+        document_match = _matches_expected_title(
+            actual=result.document_title,
+            expected=case.expected_document_title,
         )
-        leaf_match = case.expected_leaf_title is None or (
-            result.selected_leaf_title == case.expected_leaf_title
+        leaf_match = _matches_expected_title(
+            actual=result.selected_leaf_title,
+            expected=case.expected_leaf_title,
         )
-        answer_match = case.expected_answer_substring is None or (
-            case.expected_answer_substring.lower() in result.answer.lower()
+        answer_match = _matches_expected_answer(
+            actual=result.answer,
+            expected=case.expected_answer_substring,
         )
         case_results.append(
             BenchmarkCaseResult(
@@ -753,8 +760,9 @@ def run_corpus_comparison_benchmark(
                 observed_answers.append(answer)
             case_usage = _usage_delta(case_usage_before, _usage_snapshot(active_provider))
 
-            answer_match = case.expected_answer_substring is None or (
-                case.expected_answer_substring.lower() in answer.lower()
+            answer_match = _matches_expected_answer(
+                actual=answer,
+                expected=case.expected_answer_substring,
             )
             case_results.append(
                 BenchmarkCaseResult(
@@ -818,6 +826,27 @@ def _resolve_provider(provider: LLMProvider | None) -> LLMProvider:
     from treerag.provider import OpenAIProvider
 
     return OpenAIProvider()
+
+
+def _matches_expected_title(*, actual: str | None, expected: str | None) -> bool:
+    if expected is None:
+        return True
+    if actual is None:
+        return False
+    return _normalize_match_text(actual) == _normalize_match_text(expected)
+
+
+def _matches_expected_answer(*, actual: str, expected: str | None) -> bool:
+    if expected is None:
+        return True
+    normalized_expected = _normalize_match_text(expected)
+    if not normalized_expected:
+        return True
+    return normalized_expected in _normalize_match_text(actual)
+
+
+def _normalize_match_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
 
 def _usage_snapshot(provider: LLMProvider) -> UsageSnapshot | None:
@@ -915,8 +944,9 @@ def _run_single_document_method(
             model_config=model_config,
             provider=provider,
         )
-        leaf_match = case.expected_leaf_title is None or (
-            result.selected_leaf_title == case.expected_leaf_title
+        leaf_match = _matches_expected_title(
+            actual=result.selected_leaf_title,
+            expected=case.expected_leaf_title,
         )
         return result.selected_leaf_title, result.answer, leaf_match
 
@@ -924,7 +954,7 @@ def _run_single_document_method(
         leaf = _choose_keyword_leaf(case.question, root)
         context, _ = assemble_context(leaf, config=retrieval_config)
         answer = provider.answer(case.question, context=context, model_config=model_config)
-        leaf_match = case.expected_leaf_title is None or leaf.title == case.expected_leaf_title
+        leaf_match = _matches_expected_title(actual=leaf.title, expected=case.expected_leaf_title)
         return leaf.title, answer, leaf_match
 
     if method == FULL_CONTEXT_METHOD:
@@ -953,11 +983,13 @@ def _run_corpus_method(
             model_config=model_config,
             provider=provider,
         )
-        document_match = case.expected_document_title is None or (
-            result.document_title == case.expected_document_title
+        document_match = _matches_expected_title(
+            actual=result.document_title,
+            expected=case.expected_document_title,
         )
-        leaf_match = case.expected_leaf_title is None or (
-            result.selected_leaf_title == case.expected_leaf_title
+        leaf_match = _matches_expected_title(
+            actual=result.selected_leaf_title,
+            expected=case.expected_leaf_title,
         )
         return (
             result.document_title,
@@ -976,11 +1008,13 @@ def _run_corpus_method(
             model_config=model_config,
             provider=provider,
         )
-        document_match = case.expected_document_title is None or (
-            document.title == case.expected_document_title
+        document_match = _matches_expected_title(
+            actual=document.title,
+            expected=case.expected_document_title,
         )
-        leaf_match = case.expected_leaf_title is None or (
-            query_result.selected_leaf_title == case.expected_leaf_title
+        leaf_match = _matches_expected_title(
+            actual=query_result.selected_leaf_title,
+            expected=case.expected_leaf_title,
         )
         return (
             document.title,
