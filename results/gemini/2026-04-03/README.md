@@ -24,7 +24,7 @@ Measured signals from the saved run:
 
 Important note:
 
-- the strict benchmark scorer still marks this case as failed because it compares exact leaf-title strings and an exact answer substring
+- this JSON was produced before the scorer normalization pass, so its `passed` flags are stricter than the current code
 - the raw output is still useful because it shows the retrieval path difference clearly: TreeRAG is the only method that drilled into the appendix leaf
 
 Current blocker:
